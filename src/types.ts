@@ -1,8 +1,8 @@
 /**
- * All TypeScript interfaces for the AgentDbg trace format.
+ * All TypeScript interfaces for the Maida trace format.
  *
  * Two groups:
- * 1. AgentDbg schema types — must match Python spec exactly
+ * 1. Maida schema types — must match Python spec exactly
  * 2. Configuration types — mirror Python config/guardrails dataclasses
  */
 
@@ -16,7 +16,7 @@ export enum EventType {
   LOOP_WARNING = "LOOP_WARNING",
 }
 
-export interface AgentDbgEvent {
+export interface MaidaEvent {
   spec_version: string;
   event_id: string;
   run_id: string;
@@ -57,7 +57,7 @@ export interface GuardrailParams {
   max_duration_s: number | null;
 }
 
-export interface AgentDbgConfig {
+export interface MaidaConfig {
   redact: boolean;
   redact_keys: string[];
   max_field_bytes: number;

@@ -1,54 +1,58 @@
-# @agentdbg/core
+# `@maida-ai/core`
 
-TypeScript interface for AgentDbg.
+TypeScript mirror for Maida.
 
-`@agentdbg/core` is a **limited, write-side mirror** of the Python `agentdbg` package. It exists to support future TS/JS plugin integrations by writing run data in the same on-disk format that `agentdbg view` reads.
+`@maida-ai/core` is a limited, write-side mirror of the main Maida project at `github.com/maida-ai/maida.git`. It helps TS/JS integrations write local run data in the same on-disk format that the Python Maida tooling reads.
 
-Python remains the source of truth for spec and behavior.
+Python remains the source of truth for behavior and schema.
 
 ## What this package is
 
-- A small TS library that mirrors core AgentDbg schema/helpers.
-- A compatibility layer that writes `run.json` and `events.jsonl` under `~/.agentdbg/runs/<run_id>/`.
-- A package intended for plugin authors and integration code, not a full replacement for Python AgentDbg.
+- A small TS library that mirrors core Maida schema and helpers.
+- A local-first storage layer that writes `run.json` and `events.jsonl` under `~/.maida/runs/<run_id>/`.
+- A package for plugin authors and integration code that wants to produce Maida-compatible run traces.
 
 ## What this package is not
 
-- Not a full port of Python `agentdbg`.
-- Not a viewer/UI/CLI.
-- Not the runtime tracing decorator/context manager system from Python (`@trace`, `traced_run`).
-- Not the canonical implementation of the spec.
+- Not a full port of Python `maida`.
+- Not the main CLI. Use `github.com/maida-ai/maida.git` for the canonical CLI and read-side tooling.
+- Not a viewer, dashboard, or hosted service.
+- Not the full runtime tracing decorator/context-manager layer from Python.
+
+## Product framing
+
+Maida is a local-first, pre-merge behavioral regression gate for AI agents. This package supports that workflow by writing structural run data that the main Maida tooling can compare against checked-in baselines and policy.
 
 ## Source of truth
 
-The Python package in this repository is canonical:
+The Python package is canonical:
 
-- `agentdbg/agentdbg/events.py`
-- `agentdbg/agentdbg/constants.py`
-- `agentdbg/agentdbg/storage.py`
-- `agentdbg/agentdbg/config.py`
-- `agentdbg/agentdbg/_tracing/_redact.py`
-- `agentdbg/agentdbg/loopdetect.py`
+- `maida/maida/events.py`
+- `maida/maida/constants.py`
+- `maida/maida/storage.py`
+- `maida/maida/config.py`
+- `maida/maida/_tracing/_redact.py`
+- `maida/maida/loopdetect.py`
 
 When Python behavior changes, this TS package should be updated to mirror it.
 
 ## Installation
 
 ```bash
-npm install @agentdbg/core
+npm install @maida-ai/core
 ```
 
 ## Quick usage
 
 ```ts
 import {
-  createRun,
   appendEvent,
-  finalizeRun,
-  newEvent,
+  createRun,
   EventType,
+  finalizeRun,
   loadConfig,
-} from "@agentdbg/core";
+  newEvent,
+} from "@maida-ai/core";
 
 const config = loadConfig();
 
@@ -84,28 +88,23 @@ finalizeRun(
 );
 ```
 
-Then run:
-
-```bash
-agentdbg view
-```
+The resulting run lives under `~/.maida/runs/<run_id>/` by default and can be consumed by the Python Maida tooling.
 
 ## Exposed API
 
-- **Types/schema:** `EventType`, `AgentDbgEvent`, `RunMeta`, `RunCounts`, `AgentDbgConfig`, `GuardrailParams`
-- **Constants:** `SPEC_VERSION`, `REDACTED_MARKER`, `TRUNCATED_MARKER`, `DEPTH_LIMIT`, `defaultCounts`
-- **Events:** `newEvent`, `utcNowIsoMsZ`, `ensureJsonSafe`
-- **Storage (write-side):** `createRun`, `appendEvent`, `finalizeRun`, `validateRunId`
-- **Config:** `loadConfig`
-- **Redaction:** `redactAndTruncate`, `truncateString`, `keyMatchesRedact`, `normalizeUsage`, `buildErrorPayload`
-- **Loop detect:** `computeSignature`, `detectLoop`, `patternKey`
+- Types and schema: `EventType`, `MaidaEvent`, `RunMeta`, `RunCounts`, `MaidaConfig`, `GuardrailParams`
+- Constants: `SPEC_VERSION`, `REDACTED_MARKER`, `TRUNCATED_MARKER`, `DEPTH_LIMIT`, `defaultCounts`
+- Events: `newEvent`, `utcNowIsoMsZ`, `ensureJsonSafe`
+- Storage: `createRun`, `appendEvent`, `finalizeRun`, `validateRunId`
+- Config: `loadConfig`
+- Redaction: `redactAndTruncate`, `truncateString`, `keyMatchesRedact`, `normalizeUsage`, `buildErrorPayload`
+- Loop detection: `computeSignature`, `detectLoop`, `patternKey`
 
 ## Limitations
 
-- This package intentionally implements a **limited interface**.
-- Read-side storage helpers (`listRuns`, `loadEvents`, `loadRunMeta`) are handled by Python viewer/CLI.
-- Python-specific lifecycle internals are not ported.
-- Compatibility target is Linux/macOS plugin environments.
+- This package intentionally stays small and write-side focused.
+- Read-side helpers remain in the Python Maida implementation.
+- Compatibility target is Linux and macOS plugin environments.
 
 ## Development
 

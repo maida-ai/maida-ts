@@ -1,6 +1,6 @@
 /**
  * Shared constants: spec version, count schema, and redaction/truncation markers.
- * Mirrors agentdbg/agentdbg/constants.py — Python is the source of truth.
+ * Mirrors maida/maida/constants.py — Python is the source of truth.
  */
 
 import type { RunCounts } from "./types.js";

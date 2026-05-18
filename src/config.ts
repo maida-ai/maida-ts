@@ -1,8 +1,8 @@
 /**
- * Configuration loading for AgentDbg TS interface.
- * Mirrors agentdbg/agentdbg/config.py — Python is the source of truth.
+ * Configuration loading for the Maida TypeScript mirror.
+ * Mirrors maida/maida/config.py — Python is the source of truth.
  *
- * Reads ~/.agentdbg/config.yaml (user) and <projectRoot>/.agentdbg/config.yaml (project),
+ * Reads ~/.maida/config.yaml (user) and <projectRoot>/.maida/config.yaml (project),
  * then applies env var overrides. Same precedence: env > project > user > defaults.
  */
 
@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import yaml from "js-yaml";
-import type { AgentDbgConfig, GuardrailParams } from "./types.js";
+import type { MaidaConfig, GuardrailParams } from "./types.js";
 
 const DEFAULT_REDACT = true;
 const DEFAULT_REDACT_KEYS = [
@@ -114,18 +114,18 @@ function applyEnvToGuardrails(params: GuardrailParams): GuardrailParams {
   const g = { ...params };
   const env = process.env;
 
-  if (env.AGENTDBG_STOP_ON_LOOP != null)
-    g.stop_on_loop = envTruthy(env.AGENTDBG_STOP_ON_LOOP);
+  if (env.MAIDA_STOP_ON_LOOP != null)
+    g.stop_on_loop = envTruthy(env.MAIDA_STOP_ON_LOOP);
 
-  if (env.AGENTDBG_STOP_ON_LOOP_MIN_REPETITIONS != null) {
-    const n = Number(env.AGENTDBG_STOP_ON_LOOP_MIN_REPETITIONS);
+  if (env.MAIDA_STOP_ON_LOOP_MIN_REPETITIONS != null) {
+    const n = Number(env.MAIDA_STOP_ON_LOOP_MIN_REPETITIONS);
     if (Number.isFinite(n)) g.stop_on_loop_min_repetitions = Math.max(2, Math.trunc(n));
   }
 
   for (const [envKey, field] of [
-    ["AGENTDBG_MAX_LLM_CALLS", "max_llm_calls"],
-    ["AGENTDBG_MAX_TOOL_CALLS", "max_tool_calls"],
-    ["AGENTDBG_MAX_EVENTS", "max_events"],
+    ["MAIDA_MAX_LLM_CALLS", "max_llm_calls"],
+    ["MAIDA_MAX_TOOL_CALLS", "max_tool_calls"],
+    ["MAIDA_MAX_EVENTS", "max_events"],
   ] as const) {
     if (env[envKey] != null) {
       const n = Number(env[envKey]);
@@ -133,17 +133,17 @@ function applyEnvToGuardrails(params: GuardrailParams): GuardrailParams {
     }
   }
 
-  if (env.AGENTDBG_MAX_DURATION_S != null) {
-    const n = Number(env.AGENTDBG_MAX_DURATION_S);
+  if (env.MAIDA_MAX_DURATION_S != null) {
+    const n = Number(env.MAIDA_MAX_DURATION_S);
     if (Number.isFinite(n)) g.max_duration_s = Math.max(0, n);
   }
 
   return g;
 }
 
-export function loadConfig(projectRoot?: string): AgentDbgConfig {
+export function loadConfig(projectRoot?: string): MaidaConfig {
   const home = homedir();
-  const base = join(home, ".agentdbg");
+  const base = join(home, ".maida");
 
   let redact = DEFAULT_REDACT;
   let redactKeys = [...DEFAULT_REDACT_KEYS];
@@ -167,7 +167,7 @@ export function loadConfig(projectRoot?: string): AgentDbgConfig {
 
   // Project config (overrides user)
   const root = projectRoot ?? process.cwd();
-  const projCfg = loadYaml(join(root, ".agentdbg", "config.yaml"));
+  const projCfg = loadYaml(join(root, ".maida", "config.yaml"));
   if (Object.keys(projCfg).length) {
     redact = applyYaml(projCfg, "redact", redact);
     redactKeys = applyYaml(projCfg, "redact_keys", redactKeys);
@@ -181,40 +181,40 @@ export function loadConfig(projectRoot?: string): AgentDbgConfig {
   // Env overrides
   const env = process.env;
 
-  if (env.AGENTDBG_REDACT != null) redact = envTruthy(env.AGENTDBG_REDACT);
+  if (env.MAIDA_REDACT != null) redact = envTruthy(env.MAIDA_REDACT);
 
-  if (env.AGENTDBG_REDACT_KEYS != null) {
-    redactKeys = env.AGENTDBG_REDACT_KEYS.split(",")
+  if (env.MAIDA_REDACT_KEYS != null) {
+    redactKeys = env.MAIDA_REDACT_KEYS.split(",")
       .map((k) => k.trim())
       .filter(Boolean);
   }
 
-  if (env.AGENTDBG_MAX_FIELD_BYTES != null) {
-    const n = Number(env.AGENTDBG_MAX_FIELD_BYTES);
+  if (env.MAIDA_MAX_FIELD_BYTES != null) {
+    const n = Number(env.MAIDA_MAX_FIELD_BYTES);
     if (Number.isFinite(n)) maxFieldBytes = Math.max(MIN_MAX_FIELD_BYTES, Math.trunc(n));
   }
 
-  if (env.AGENTDBG_LOOP_WINDOW != null) {
-    const n = Number(env.AGENTDBG_LOOP_WINDOW);
+  if (env.MAIDA_LOOP_WINDOW != null) {
+    const n = Number(env.MAIDA_LOOP_WINDOW);
     if (Number.isFinite(n)) loopWindow = Math.max(MIN_LOOP_WINDOW, Math.trunc(n));
   }
 
-  if (env.AGENTDBG_LOOP_REPETITIONS != null) {
-    const n = Number(env.AGENTDBG_LOOP_REPETITIONS);
+  if (env.MAIDA_LOOP_REPETITIONS != null) {
+    const n = Number(env.MAIDA_LOOP_REPETITIONS);
     if (Number.isFinite(n)) loopRepetitions = Math.max(MIN_LOOP_REPETITIONS, Math.trunc(n));
   }
 
-  if (env.AGENTDBG_DATA_DIR != null) {
-    const v = env.AGENTDBG_DATA_DIR.trim();
+  if (env.MAIDA_DATA_DIR != null) {
+    const v = env.MAIDA_DATA_DIR.trim();
     if (v) dataDir = v.startsWith("~") ? join(home, v.slice(1)) : v;
   }
 
   guardrails = applyEnvToGuardrails(guardrails);
 
-  // Plugin-only: AGENTDBG_ENABLED
+  // Plugin-only: MAIDA_ENABLED
   let enabled = true;
-  if (env.AGENTDBG_ENABLED != null) {
-    enabled = envTruthy(env.AGENTDBG_ENABLED);
+  if (env.MAIDA_ENABLED != null) {
+    enabled = envTruthy(env.MAIDA_ENABLED);
   }
 
   return {

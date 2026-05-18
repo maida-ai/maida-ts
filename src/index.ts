@@ -1,16 +1,16 @@
 /**
- * @agentdbg/core — TypeScript interface for AgentDbg.
+ * @maida-ai/core — TypeScript mirror for Maida.
  *
- * Write-side trace events compatible with the Python agentdbg viewer.
- * Python package (agentdbg) is the source of truth for the spec.
+ * Write-side trace events compatible with the Python maida CLI.
+ * Python package (maida) is the source of truth for the spec.
  */
 
 export {
   EventType,
-  type AgentDbgEvent,
+  type MaidaEvent,
   type RunMeta,
   type RunCounts,
-  type AgentDbgConfig,
+  type MaidaConfig,
   type GuardrailParams,
 } from "./types.js";
 

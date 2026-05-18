@@ -1,9 +1,9 @@
 /**
  * Pure redaction and truncation utilities.
- * Mirrors agentdbg/agentdbg/_tracing/_redact.py — Python is the source of truth.
+ * Mirrors maida/maida/_tracing/_redact.py — Python is the source of truth.
  */
 
-import type { AgentDbgConfig } from "./types.js";
+import type { MaidaConfig } from "./types.js";
 import { DEPTH_LIMIT, REDACTED_MARKER, TRUNCATED_MARKER } from "./constants.js";
 
 const RECURSION_LIMIT = DEPTH_LIMIT;
@@ -25,7 +25,7 @@ export function truncateString(s: string, maxBytes: number): string {
 
 export function redactAndTruncate(
   obj: unknown,
-  config: Pick<AgentDbgConfig, "redact" | "redact_keys" | "max_field_bytes">,
+  config: Pick<MaidaConfig, "redact" | "redact_keys" | "max_field_bytes">,
   depth: number = 0,
 ): unknown {
   if (depth > RECURSION_LIMIT) return TRUNCATED_MARKER;
@@ -77,7 +77,7 @@ export function normalizeUsage(
 
 export function buildErrorPayload(
   err: Error | string | Record<string, unknown> | null | undefined,
-  config: Pick<AgentDbgConfig, "redact" | "redact_keys" | "max_field_bytes">,
+  config: Pick<MaidaConfig, "redact" | "redact_keys" | "max_field_bytes">,
   includeStack: boolean = true,
 ): Record<string, unknown> | null {
   if (err == null) return null;

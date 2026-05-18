@@ -1,7 +1,7 @@
 {
-  "name": "@agentdbg/core",
-  "version": "0.1.0",
-  "description": "TypeScript interface for AgentDbg — write-side trace events compatible with the Python agentdbg viewer.",
+  "name": "@maida-ai/core",
+  "version": "0.2.0",
+  "description": "TypeScript mirror for Maida write-side trace events and local-first run storage.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,11 +21,12 @@
     "lint": "tsc --noEmit"
   },
   "keywords": [
-    "agentdbg",
+    "maida",
+    "behavioral-regression",
+    "ci-gate",
     "tracing",
-    "debugging",
     "ai-agents",
-    "observability"
+    "local-first"
   ],
   "license": "Apache-2.0",
   "dependencies": {

@@ -1,6 +1,6 @@
 /**
  * Loop detection for agent runs: signature computation and repeated-pattern detection.
- * Mirrors agentdbg/agentdbg/loopdetect.py — Python is the source of truth.
+ * Mirrors maida/maida/loopdetect.py — Python is the source of truth.
  *
  * Pure functions, no I/O.
  */

@@ -1,13 +1,13 @@
 /**
- * Event factory and pure helpers for AgentDbg trace events.
- * Mirrors agentdbg/agentdbg/events.py — Python is the source of truth.
+ * Event factory and pure helpers for Maida trace events.
+ * Mirrors maida/maida/events.py — Python is the source of truth.
  *
  * Pure functions, no I/O, unit-testable.
  */
 
 import { randomUUID } from "node:crypto";
 
-import type { AgentDbgEvent, EventType } from "./types.js";
+import type { MaidaEvent, EventType } from "./types.js";
 import { DEPTH_LIMIT, SPEC_VERSION, TRUNCATED_MARKER } from "./constants.js";
 
 const MAX_JSON_DEPTH = DEPTH_LIMIT;
@@ -50,7 +50,7 @@ export function newEvent(
   name: string,
   payload: unknown,
   opts?: NewEventOpts,
-): AgentDbgEvent {
+): MaidaEvent {
   const eventId = randomUUID();
   const ts = utcNowIsoMsZ();
 

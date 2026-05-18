@@ -9,7 +9,7 @@ import { EventType } from "../src/types.js";
 import { SPEC_VERSION } from "../src/constants.js";
 
 function makeTmpDataDir(): string {
-  const dir = join(tmpdir(), `agentdbg-storage-test-${randomUUID()}`);
+  const dir = join(tmpdir(), `maida-storage-test-${randomUUID()}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

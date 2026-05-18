@@ -1,6 +1,6 @@
 /**
- * Local storage for AgentDbg runs: run metadata (run.json) and append-only events (events.jsonl).
- * Mirrors the write-side of agentdbg/agentdbg/storage.py — Python is the source of truth.
+ * Local storage for Maida runs: run metadata (run.json) and append-only events (events.jsonl).
+ * Mirrors the write-side of maida/maida/storage.py — Python is the source of truth.
  *
  * Layout: <data_dir>/runs/<run_id>/ with run.json and events.jsonl.
  */
@@ -20,7 +20,7 @@ import { join, resolve, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 
-import type { AgentDbgConfig, AgentDbgEvent, RunCounts, RunMeta } from "./types.js";
+import type { MaidaConfig, MaidaEvent, RunCounts, RunMeta } from "./types.js";
 import { SPEC_VERSION, defaultCounts } from "./constants.js";
 import { utcNowIsoMsZ } from "./events.js";
 
@@ -45,11 +45,11 @@ export function validateRunId(runId: string): string {
   return id;
 }
 
-function runsDir(config: Pick<AgentDbgConfig, "data_dir">): string {
+function runsDir(config: Pick<MaidaConfig, "data_dir">): string {
   return join(config.data_dir, "runs");
 }
 
-function runDir(runId: string, config: Pick<AgentDbgConfig, "data_dir">): string {
+function runDir(runId: string, config: Pick<MaidaConfig, "data_dir">): string {
   validateRunId(runId);
   const base = runsDir(config);
   const path = join(base, runId);
@@ -87,7 +87,7 @@ function atomicWriteJson(filePath: string, data: Record<string, unknown>): void 
 
 export function createRun(
   runName: string | null,
-  config: Pick<AgentDbgConfig, "data_dir">,
+  config: Pick<MaidaConfig, "data_dir">,
 ): RunMeta & { paths: { run_dir: string; run_json: string; events_jsonl: string } } {
   const runId = randomUUID();
   const dir = runDir(runId, config);
@@ -121,8 +121,8 @@ export function createRun(
 
 export function appendEvent(
   runId: string,
-  event: AgentDbgEvent | Record<string, unknown>,
-  config: Pick<AgentDbgConfig, "data_dir">,
+  event: MaidaEvent | Record<string, unknown>,
+  config: Pick<MaidaConfig, "data_dir">,
 ): void {
   const dir = runDir(runId, config);
   const eventsPath = join(dir, EVENTS_JSONL);
@@ -140,7 +140,7 @@ export function finalizeRun(
   runId: string,
   status: "ok" | "error",
   counts: RunCounts,
-  config: Pick<AgentDbgConfig, "data_dir">,
+  config: Pick<MaidaConfig, "data_dir">,
 ): void {
   const dir = runDir(runId, config);
   const runJsonPath = join(dir, RUN_JSON);
