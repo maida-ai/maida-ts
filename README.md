@@ -2,14 +2,14 @@
 
 TypeScript mirror for Maida.
 
-`@maida-ai/core` is a limited, write-side mirror of the main Maida project at `github.com/maida-ai/maida.git`. It helps TS/JS integrations write local run data in the same on-disk format that the Python Maida tooling reads.
+`@maida-ai/core` is a limited, write-side mirror of the main Maida project at `github.com/maida-ai/maida.git`. It helps TS/JS integrations write local trace data in the same on-disk format that the Python Maida tooling reads.
 
 Python remains the source of truth for behavior and schema.
 
 ## What this package is
 
 - A small TS library that mirrors core Maida schema and helpers.
-- A local-first storage layer that writes `run.json` and `events.jsonl` under `~/.maida/runs/<run_id>/`.
+- A local-first storage layer that writes `meta.json` and `spans.jsonl` under `~/.maida/runs/<trace_id>/`.
 - A package for plugin authors and integration code that wants to produce Maida-compatible run traces.
 
 ## What this package is not
@@ -59,14 +59,14 @@ const config = loadConfig();
 const run = createRun("my-plugin-run", { data_dir: config.data_dir });
 
 appendEvent(
-  run.run_id,
-  newEvent(EventType.RUN_START, run.run_id, "my-plugin-run", {}),
+  run.trace_id,
+  newEvent(EventType.RUN_START, run.trace_id, "my-plugin-run", {}),
   { data_dir: config.data_dir },
 );
 
 appendEvent(
-  run.run_id,
-  newEvent(EventType.LLM_CALL, run.run_id, "gpt-4", {
+  run.trace_id,
+  newEvent(EventType.LLM_CALL, run.trace_id, "gpt-4", {
     model: "gpt-4",
     prompt: "hello",
     response: "world",
@@ -75,27 +75,27 @@ appendEvent(
 );
 
 appendEvent(
-  run.run_id,
-  newEvent(EventType.RUN_END, run.run_id, "my-plugin-run", { status: "ok" }),
+  run.trace_id,
+  newEvent(EventType.RUN_END, run.trace_id, "my-plugin-run", { status: "ok" }),
   { data_dir: config.data_dir },
 );
 
 finalizeRun(
-  run.run_id,
+  run.trace_id,
   "ok",
   { llm_calls: 1, tool_calls: 0, errors: 0, loop_warnings: 0 },
   { data_dir: config.data_dir },
 );
 ```
 
-The resulting run lives under `~/.maida/runs/<run_id>/` by default and can be consumed by the Python Maida tooling.
+The resulting trace lives under `~/.maida/runs/<trace_id>/` by default and can be consumed by the Python Maida tooling.
 
 ## Exposed API
 
 - Types and schema: `EventType`, `MaidaEvent`, `RunMeta`, `RunCounts`, `MaidaConfig`, `GuardrailParams`
 - Constants: `SPEC_VERSION`, `REDACTED_MARKER`, `TRUNCATED_MARKER`, `DEPTH_LIMIT`, `defaultCounts`
 - Events: `newEvent`, `utcNowIsoMsZ`, `ensureJsonSafe`
-- Storage: `createRun`, `appendEvent`, `finalizeRun`, `validateRunId`
+- Storage: `createRun`, `appendEvent`, `appendSpan`, `appendLegacyEvent`, `finalizeRun`, `loadValidatedRun`, `validateTraceId`, `validateRunId`
 - Config: `loadConfig`
 - Redaction: `redactAndTruncate`, `truncateString`, `keyMatchesRedact`, `normalizeUsage`, `buildErrorPayload`
 - Loop detection: `computeSignature`, `detectLoop`, `patternKey`
