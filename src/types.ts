@@ -29,6 +29,28 @@ export interface MaidaEvent {
   meta: Record<string, unknown>;
 }
 
+export interface MaidaSpanEvent {
+  name: string;
+  timestamp: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface MaidaSpan {
+  spec_version?: string;
+  trace_id: string;
+  span_id: string;
+  parent_span_id: string | null;
+  name: string;
+  kind: string;
+  start_time: string;
+  end_time: string | null;
+  duration_ms: number | null;
+  attributes: Record<string, unknown>;
+  events: MaidaSpanEvent[];
+  status_code: "OK" | "ERROR" | "UNSET";
+  status_description: string;
+}
+
 export interface RunCounts {
   llm_calls: number;
   tool_calls: number;
@@ -38,14 +60,18 @@ export interface RunCounts {
 
 export interface RunMeta {
   spec_version: string;
-  run_id: string;
+  trace_id: string;
+  /**
+   * Compatibility alias for callers that still treat trace IDs as run IDs.
+   * This is returned by TS helpers, but not written to current meta.json.
+   */
+  run_id?: string;
   run_name: string | null;
   started_at: string;
   ended_at: string | null;
   duration_ms: number | null;
   status: string;
   counts: RunCounts;
-  last_event_ts: string | null;
 }
 
 export interface GuardrailParams {

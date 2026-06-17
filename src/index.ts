@@ -24,7 +24,19 @@ export {
 
 export { newEvent, utcNowIsoMsZ, ensureJsonSafe, type NewEventOpts } from "./events.js";
 
-export { createRun, appendEvent, finalizeRun, validateRunId } from "./storage.js";
+export {
+  createRun,
+  appendEvent,
+  appendSpan,
+  appendLegacyEvent,
+  finalizeRun,
+  loadValidatedRun,
+  validateRunId,
+  validateTraceId,
+  type CreatedRun,
+  type RunPaths,
+  type ValidatedRun,
+} from "./storage.js";
 
 export { loadConfig } from "./config.js";
 

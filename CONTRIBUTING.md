@@ -25,7 +25,7 @@ Please keep this package focused on a limited interface:
 
 - schema/types
 - pure helpers (events/redaction/loop detection)
-- write-side storage compatibility
+- write-side current trace storage compatibility
 - config loading compatibility
 
 Do not add viewer/CLI features here; those belong to Python `maida`.
@@ -42,8 +42,8 @@ npm test
 
 Before merging changes that affect storage or event schema:
 
-1. Create a run from TS (`createRun` + `appendEvent` + `finalizeRun`)
-2. Read it using Python storage helpers (`load_run_meta`, `load_events`)
+1. Create a trace from TS (`createRun` + `appendEvent` or `appendSpan` + `finalizeRun`)
+2. Read it using Python storage helpers (`load_validated_run`, `load_events`)
 3. Confirm the Python `maida` tooling can read it correctly
 
 ## Style notes
