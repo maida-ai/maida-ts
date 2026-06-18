@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -336,6 +336,69 @@ describe("loadValidatedRun", () => {
     expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(
       /spans\.jsonl contains no spans/,
     );
+  });
+
+  it("rejects an unsupported spec_version with an upgrade hint", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("old-spec", { data_dir: dataDir });
+    finalizeRun(
+      run.trace_id,
+      "ok",
+      { llm_calls: 0, tool_calls: 0, errors: 0, loop_warnings: 0 },
+      { data_dir: dataDir },
+    );
+
+    const meta = JSON.parse(readFileSync(run.paths.meta_json, "utf-8"));
+    meta.spec_version = "0.1";
+    writeFileSync(run.paths.meta_json, JSON.stringify(meta), "utf-8");
+
+    expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(
+      /unsupported spec_version '0\.1'/,
+    );
+    expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(/upgrade Maida/);
+  });
+
+  it("reports an invalid span id distinctly from malformed JSON", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("bad-span", { data_dir: dataDir });
+    finalizeRun(
+      run.trace_id,
+      "ok",
+      { llm_calls: 0, tool_calls: 0, errors: 0, loop_warnings: 0 },
+      { data_dir: dataDir },
+    );
+
+    // Valid JSON, but the span_id is not a 16-char hex value.
+    appendFileSync(
+      run.paths.spans_jsonl,
+      `${JSON.stringify({ trace_id: run.trace_id, span_id: "not-hex", parent_span_id: null })}\n`,
+      "utf-8",
+    );
+
+    expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(/invalid span_id/);
+  });
+
+  it("rejects a span that belongs to a different trace", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("foreign-span", { data_dir: dataDir });
+    finalizeRun(
+      run.trace_id,
+      "ok",
+      { llm_calls: 0, tool_calls: 0, errors: 0, loop_warnings: 0 },
+      { data_dir: dataDir },
+    );
+
+    const otherTrace = "0123456789abcdef0123456789abcdef";
+    appendFileSync(
+      run.paths.spans_jsonl,
+      `${JSON.stringify({ trace_id: otherTrace, span_id: "0123456789abcdef", parent_span_id: null })}\n`,
+      "utf-8",
+    );
+
+    expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(/different trace_id/);
   });
 });
 
