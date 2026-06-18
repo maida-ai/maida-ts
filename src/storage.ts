@@ -132,6 +132,15 @@ function eventIdToSpanId(raw: unknown): string | null {
   return HEX_RE.test(candidate) ? candidate : null;
 }
 
+/**
+ * Deterministic span id for a run's synthetic root span, derived from the trace
+ * id. Because it is stable, event-derived child spans can reference it as their
+ * parent before finalizeRun writes the root span itself.
+ */
+function runRootSpanId(traceId: string): string {
+  return traceId.slice(0, SPAN_ID_LEN);
+}
+
 function runsDir(config: Pick<MaidaConfig, "data_dir">): string {
   return join(config.data_dir, "runs");
 }
@@ -267,10 +276,12 @@ function eventToSpan(traceId: string, event: MaidaEvent | Record<string, unknown
   let name = String(event.name ?? "");
   let statusCode: MaidaSpan["status_code"] = "UNSET";
   let statusDescription = "";
-  let parentSpanId: string | null = eventIdToSpanId(event.parent_id);
+  // Default to the run root so unparented events nest under a single root
+  // rather than each becoming a competing root span. An explicit parent_id
+  // still wins.
+  let parentSpanId: string | null = eventIdToSpanId(event.parent_id) ?? runRootSpanId(traceId);
 
   if (eventType === "RUN_START") {
-    parentSpanId = null;
     attrs["maida.run_name"] = name;
   } else if (eventType === "RUN_END") {
     attrs["maida.run_name"] = name;
@@ -496,7 +507,7 @@ function rootSpanForMeta(meta: Record<string, unknown>, status: "ok" | "error"):
   return {
     spec_version: SPEC_VERSION,
     trace_id: traceId,
-    span_id: newSpanId(),
+    span_id: runRootSpanId(traceId),
     parent_span_id: null,
     name: String(meta.run_name ?? ""),
     kind: "INTERNAL",
