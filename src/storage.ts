@@ -17,7 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve, relative } from "node:path";
+import { basename, join, resolve, relative } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { MaidaConfig, MaidaEvent, MaidaSpan, RunCounts, RunMeta } from "./types.js";
@@ -170,7 +170,7 @@ function legacyRunDir(runId: string, config: Pick<MaidaConfig, "data_dir">): str
 function atomicWriteJson(filePath: string, data: Record<string, unknown>): void {
   const dir = join(filePath, "..");
   mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.${filePath.split("/").pop()}.${randomUUID()}.tmp`);
+  const tmp = join(dir, `.${basename(filePath)}.${randomUUID()}.tmp`);
   try {
     const content = `${JSON.stringify(data, null, 2)}\n`;
     const fd = openSync(tmp, "w");
