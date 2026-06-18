@@ -146,7 +146,8 @@ describe("appendEvent", () => {
     const parsed1 = JSON.parse(lines[0]);
     const parsed2 = JSON.parse(lines[1]);
     expect(parsed1.trace_id).toBe(run.trace_id);
-    expect(parsed1.parent_span_id).toBeNull();
+    // Unparented events nest under the deterministic run root span id.
+    expect(parsed1.parent_span_id).toBe(run.trace_id.slice(0, 16));
     expect(parsed1.attributes["maida.event_type"]).toBe("RUN_START");
     expect(parsed2.attributes["gen_ai.request.model"]).toBe("gpt-4");
     expect(parsed2.events[0].name).toBe("gen_ai.user.message");
@@ -390,7 +391,16 @@ describe("end-to-end: create, append, finalize", () => {
     expect(spans[1].attributes["gen_ai.request.model"]).toBe("gpt-4");
     expect(spans[2].attributes["maida.tool_name"]).toBe("search");
     expect(spans[3].attributes["maida.event_type"]).toBe("RUN_END");
-    expect(spans[4].parent_span_id).toBeNull();
+
+    // Exactly one root (the synthetic run root from finalizeRun), and every
+    // event-derived span nests under it.
+    const roots = spans.filter((s) => s.parent_span_id === null);
+    expect(roots).toHaveLength(1);
+    const rootSpan = roots[0];
+    expect(rootSpan.span_id).toBe(run.trace_id.slice(0, 16));
+    for (const span of spans.slice(0, 4)) {
+      expect(span.parent_span_id).toBe(rootSpan.span_id);
+    }
 
     // Every span has all required current-format fields
     for (const span of spans) {
