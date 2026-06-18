@@ -171,6 +171,32 @@ describe("appendEvent", () => {
       expect(() => JSON.parse(line)).not.toThrow();
     }
   });
+
+  it("links a child span to its parent event via parent_id", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("linked", { data_dir: dataDir });
+
+    const startEvt = newEvent(EventType.RUN_START, run.trace_id, "linked", {});
+    appendEvent(run.trace_id, startEvt, { data_dir: dataDir });
+    const childEvt = newEvent(
+      EventType.LLM_CALL,
+      run.trace_id,
+      "gpt-4",
+      { model: "gpt-4" },
+      { parentId: startEvt.event_id },
+    );
+    appendEvent(run.trace_id, childEvt, { data_dir: dataDir });
+
+    const [startSpan, childSpan] = readFileSync(run.paths.spans_jsonl, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    // The UUID parent_id resolves to the same span id the parent event produced.
+    expect(childSpan.parent_span_id).not.toBeNull();
+    expect(childSpan.parent_span_id).toBe(startSpan.span_id);
+  });
 });
 
 describe("appendSpan", () => {

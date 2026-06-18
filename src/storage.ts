@@ -118,6 +118,20 @@ function newSpanId(): string {
   return randomBytes(8).toString("hex");
 }
 
+/**
+ * Derive a stable 16-char hex span id from an event id. Event ids are UUIDs
+ * (or other identifiers); we strip dashes and take the leading 16 hex chars so
+ * that a child event's `parent_id` resolves to the same span id the parent
+ * event produced for itself. Returns null when no usable hex id can be derived.
+ */
+function eventIdToSpanId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const compact = raw.replaceAll("-", "").toLowerCase();
+  if (compact.length < SPAN_ID_LEN) return null;
+  const candidate = compact.slice(0, SPAN_ID_LEN);
+  return HEX_RE.test(candidate) ? candidate : null;
+}
+
 function runsDir(config: Pick<MaidaConfig, "data_dir">): string {
   return join(config.data_dir, "runs");
 }
@@ -253,10 +267,7 @@ function eventToSpan(traceId: string, event: MaidaEvent | Record<string, unknown
   let name = String(event.name ?? "");
   let statusCode: MaidaSpan["status_code"] = "UNSET";
   let statusDescription = "";
-  let parentSpanId: string | null =
-    typeof event.parent_id === "string" && event.parent_id.length === SPAN_ID_LEN
-      ? event.parent_id
-      : null;
+  let parentSpanId: string | null = eventIdToSpanId(event.parent_id);
 
   if (eventType === "RUN_START") {
     parentSpanId = null;
@@ -349,7 +360,7 @@ function eventToSpan(traceId: string, event: MaidaEvent | Record<string, unknown
   return {
     spec_version: SPEC_VERSION,
     trace_id: traceId,
-    span_id: validateSpanId(event.event_id?.replaceAll("-", "").slice(0, SPAN_ID_LEN) || newSpanId(), "span_id"),
+    span_id: validateSpanId(eventIdToSpanId(event.event_id) ?? newSpanId(), "span_id"),
     parent_span_id: parentSpanId,
     name,
     kind: "INTERNAL",
