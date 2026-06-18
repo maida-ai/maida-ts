@@ -562,9 +562,13 @@ export function finalizeRun(
   appendSpan(id, rootSpanForMeta(meta, status), config);
 }
 
-function validationError(traceId: string, problem: string): Error {
+function validationError(
+  traceId: string,
+  problem: string,
+  nextStep = "rerun the traced agent to create a fresh run",
+): Error {
   return new Error(
-    `Run validation failed for ${traceId.slice(0, 8)}: ${problem}. Next step: rerun the traced agent to create a fresh run.`,
+    `Run validation failed for ${traceId.slice(0, 8)}: ${problem}. Next step: ${nextStep}.`,
   );
 }
 
@@ -577,16 +581,26 @@ function readSpansForValidation(traceId: string, config: Pick<MaidaConfig, "data
     .filter(Boolean);
   if (lines.length === 0) throw validationError(traceId, "spans.jsonl contains no spans");
   return lines.map((line, index) => {
+    let raw: unknown;
     try {
-      const span = JSON.parse(line);
-      if (!span || typeof span !== "object" || Array.isArray(span)) {
-        throw validationError(traceId, `spans.jsonl line ${index + 1} must contain a JSON object`);
-      }
-      return normalizeSpan(traceId, span as Record<string, unknown>);
-    } catch (e) {
-      if (e instanceof Error && e.message.startsWith("Run validation failed")) throw e;
+      raw = JSON.parse(line);
+    } catch {
       throw validationError(traceId, `spans.jsonl line ${index + 1} is malformed JSON`);
     }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw validationError(traceId, `spans.jsonl line ${index + 1} must contain a JSON object`);
+    }
+    let span: MaidaSpan;
+    try {
+      span = normalizeSpan(traceId, raw as Record<string, unknown>);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : "an invalid span field";
+      throw validationError(traceId, `spans.jsonl line ${index + 1} has ${detail}`);
+    }
+    if (span.trace_id !== traceId) {
+      throw validationError(traceId, `spans.jsonl line ${index + 1} belongs to a different trace_id`);
+    }
+    return span;
   });
 }
 
@@ -621,7 +635,11 @@ export function loadValidatedRun(
     throw validationError(id, "meta.json is malformed JSON");
   }
   if (meta.spec_version != null && meta.spec_version !== SPEC_VERSION) {
-    throw validationError(id, `meta.json declares unsupported spec_version '${String(meta.spec_version)}'`);
+    throw validationError(
+      id,
+      `meta.json declares unsupported spec_version '${String(meta.spec_version)}'`,
+      `upgrade Maida or re-record this trace; the supported format is spec_version '${SPEC_VERSION}'`,
+    );
   }
   if (meta.trace_id !== id) {
     throw validationError(id, "meta.json trace_id does not match run directory");
