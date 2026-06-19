@@ -2,6 +2,8 @@
 
 TypeScript mirror for Maida.
 
+**Note on Versioning:** This package mirrors the Python Maida package version.
+
 `@maida-ai/core` is a limited, write-side mirror of the main Maida project at `github.com/maida-ai/maida.git`. It helps TS/JS integrations write local trace data in the same on-disk format that the Python Maida tooling reads.
 
 Python remains the source of truth for behavior and schema.

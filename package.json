@@ -1,6 +1,6 @@
 {
   "name": "@maida-ai/core",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "TypeScript mirror for Maida write-side trace events and local-first run storage.",
   "type": "module",
   "main": "dist/index.js",
@@ -39,6 +39,6 @@
     "vitest": "^3.1.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
