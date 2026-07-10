@@ -120,6 +120,7 @@ function expectSpanShape(span: MaidaSpan, traceId: string): void {
   for (const field of REQUIRED_SPAN_FIELDS) {
     expect(span).toHaveProperty(field);
   }
+  expect(span).not.toHaveProperty("spec_version");
   expect(span.trace_id).toBe(traceId);
   expect(span.span_id).toMatch(/^[0-9a-f]{16}$/);
   if (span.parent_span_id !== null) {
@@ -145,6 +146,7 @@ function expectLoadedFixture(name: keyof typeof CURRENT_FIXTURES): {
     for (const field of REQUIRED_SPAN_FIELDS) {
       expect(span).toHaveProperty(field);
     }
+    expect(span).not.toHaveProperty("spec_version");
     expect(span.trace_id).toBe(traceId);
   }
 

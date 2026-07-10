@@ -36,7 +36,6 @@ export interface MaidaSpanEvent {
 }
 
 export interface MaidaSpan {
-  spec_version?: string;
   trace_id: string;
   span_id: string;
   parent_span_id: string | null;

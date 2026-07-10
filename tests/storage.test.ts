@@ -146,6 +146,8 @@ describe("appendEvent", () => {
     const parsed1 = JSON.parse(lines[0]);
     const parsed2 = JSON.parse(lines[1]);
     expect(parsed1.trace_id).toBe(run.trace_id);
+    expect(parsed1).not.toHaveProperty("spec_version");
+    expect(parsed2).not.toHaveProperty("spec_version");
     // Unparented events nest under the deterministic run root span id.
     expect(parsed1.parent_span_id).toBe(run.trace_id.slice(0, 16));
     expect(parsed1.attributes["maida.event_type"]).toBe("RUN_START");
@@ -238,6 +240,7 @@ describe("appendSpan", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+    expect(stored).not.toHaveProperty("spec_version");
     expect(stored.attributes.api_key).toBe(REDACTED_MARKER);
     expect(stored.attributes["gen_ai.usage.total_tokens"]).toBe(10);
     expect(stored.events[0].attributes.authorization).toBe(REDACTED_MARKER);
@@ -265,6 +268,7 @@ describe("finalizeRun", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
     expect(spans.some((span) => span.parent_span_id === null)).toBe(true);
+    expect(spans.every((span) => !("spec_version" in span))).toBe(true);
   });
 
   it("finalizes with error status", () => {
@@ -336,6 +340,37 @@ describe("loadValidatedRun", () => {
     expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(
       /spans\.jsonl contains no spans/,
     );
+  });
+
+  it("tolerates and drops additive span-level spec_version fields from older traces", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("legacy-span-version", { data_dir: dataDir });
+
+    appendFileSync(
+      run.paths.spans_jsonl,
+      `${JSON.stringify({
+        spec_version: SPEC_VERSION,
+        trace_id: run.trace_id,
+        span_id: "0123456789abcdef",
+        parent_span_id: run.trace_id.slice(0, 16),
+        name: "legacy-child",
+        kind: "INTERNAL",
+        start_time: "2026-01-01T00:00:00.000Z",
+        end_time: null,
+        duration_ms: null,
+        attributes: {},
+        events: [],
+        status_code: "UNSET",
+        status_description: "",
+      })}\n`,
+      "utf-8",
+    );
+
+    const loaded = loadValidatedRun(run.trace_id, { data_dir: dataDir });
+    expect(loaded.spans).toHaveLength(1);
+    expect(loaded.spans[0]).not.toHaveProperty("spec_version");
+    expect(loaded.spans[0].name).toBe("legacy-child");
   });
 
   it("rejects an unsupported spec_version with an upgrade hint", () => {
@@ -479,6 +514,7 @@ describe("end-to-end: create, append, finalize", () => {
       expect(span).toHaveProperty("events");
       expect(span).toHaveProperty("status_code");
       expect(span).toHaveProperty("status_description");
+      expect(span).not.toHaveProperty("spec_version");
     }
   });
 });
