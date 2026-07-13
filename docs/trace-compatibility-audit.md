@@ -63,14 +63,21 @@ for plugin and integration code that needs to write local Maida traces.
 - No framework adapters for LangChain/LangGraph, OpenAI Agents SDK, or CrewAI.
 - No tracing decorator/context manager, active-run context, guardrail
   enforcement, or automatic recorders.
-- No cross-repo conformance fixtures proving Python CLI compatibility for all
-  intended TS-produced traces.
 - No promise of full Python feature parity.
 
-## Follow-ups
+## Conformance Coverage
 
-- [maida-ts#4](https://github.com/maida-ai/maida-ts/issues/4) tracks the
-  implementation work for any remaining writer/reader compatibility or
-  conversion-path gaps.
-- [maida-ts#5](https://github.com/maida-ai/maida-ts/issues/5) tracks
-  cross-repo conformance fixtures for TS-produced traces and Python consumers.
+- `tests/fixtures/traces/` contains documented current-format fixtures for a
+  normal run, a tool loop, and a running trace with no terminal state, plus an
+  intentionally malformed trace.
+- `tests/fixtures.test.ts` validates the shared metadata and span shape, the
+  expected structural signal in each valid fixture, and rejection of the
+  malformed fixture.
+- These fixtures are the TypeScript-owned inputs for cross-repo consumers. This
+  package does not embed or invoke the Python CLI in its test suite; Python-side
+  projection and CLI conformance remain in the canonical Python repository.
+
+The writer/reader compatibility work was completed by
+[maida-ts#4](https://github.com/maida-ai/maida-ts/issues/4), and the conformance
+fixtures were completed by
+[maida-ts#5](https://github.com/maida-ai/maida-ts/issues/5).
