@@ -92,6 +92,27 @@ finalizeRun(
 
 The resulting trace lives under `~/.maida/runs/<trace_id>/` by default and can be consumed by the Python Maida tooling.
 
+## Trace compatibility
+
+Current TS-produced traces target Maida `spec_version: "0.2"` and use the same
+local storage layout as Python:
+
+```text
+~/.maida/runs/<trace_id>/
+  meta.json
+  spans.jsonl
+```
+
+`meta.json` contains the run-level `spec_version`, `trace_id`, status, timing,
+and counts. `spans.jsonl` contains one span JSON object per line; span rows do
+not include their own `spec_version`. `loadValidatedRun()` validates this
+current storage shape and tolerates older TS-produced span rows that include an
+extra span-level `spec_version` field by ignoring that additive field.
+
+The compatibility fixtures in `tests/fixtures/traces/` cover normal,
+tool-loop, running/missing-terminal-state, and malformed trace cases for other
+Maida repos to copy or read during cross-repo conformance work.
+
 ## Exposed API
 
 - Types and schema: `EventType`, `MaidaEvent`, `RunMeta`, `RunCounts`, `MaidaConfig`, `GuardrailParams`
@@ -105,7 +126,12 @@ The resulting trace lives under `~/.maida/runs/<trace_id>/` by default and can b
 ## Limitations
 
 - This package intentionally stays small and write-side focused.
-- Read-side helpers remain in the Python Maida implementation.
+- `loadValidatedRun()` is a storage validator, not the Python projection,
+  baseline, diff, assertion, or viewer engine.
+- Read-side product workflows remain in the Python Maida implementation.
+- Framework adapters, tracing decorators/context managers, guardrail
+  enforcement, the CLI, and the local viewer are Python-only surfaces.
+- The package does not promise full Python feature parity.
 - Compatibility target is Linux and macOS plugin environments.
 
 ## Development

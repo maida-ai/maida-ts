@@ -369,7 +369,6 @@ function eventToSpan(traceId: string, event: MaidaEvent | Record<string, unknown
   }
 
   return {
-    spec_version: SPEC_VERSION,
     trace_id: traceId,
     span_id: validateSpanId(eventIdToSpanId(event.event_id) ?? newSpanId(), "span_id"),
     parent_span_id: parentSpanId,
@@ -387,8 +386,10 @@ function eventToSpan(traceId: string, event: MaidaEvent | Record<string, unknown
 
 function normalizeSpan(traceId: string, span: Record<string, unknown>): MaidaSpan {
   const start = typeof span.start_time === "string" ? span.start_time : utcNowIsoMsZ();
+  // Older TS-produced spans may include an additive span-level spec_version.
+  // The current public contract keeps spec_version in meta.json only, so reads
+  // tolerate and drop the span field instead of preserving it.
   return {
-    spec_version: typeof span.spec_version === "string" ? span.spec_version : SPEC_VERSION,
     trace_id: validateTraceId(String(span.trace_id ?? traceId)),
     span_id: validateSpanId(String(span.span_id ?? newSpanId()), "span_id"),
     parent_span_id:
@@ -505,7 +506,6 @@ function rootSpanForMeta(meta: Record<string, unknown>, status: "ok" | "error"):
   const durationMs = typeof meta.duration_ms === "number" ? meta.duration_ms : null;
   const counts = payloadRecord(meta.counts);
   return {
-    spec_version: SPEC_VERSION,
     trace_id: traceId,
     span_id: runRootSpanId(traceId),
     parent_span_id: null,
