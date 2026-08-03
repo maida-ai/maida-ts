@@ -14,6 +14,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -35,6 +36,7 @@ const SPAN_ID_LEN = 16;
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HEX_RE = /^[0-9a-f]+$/;
+const SEMVER_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
 type StorageConfig = Pick<MaidaConfig, "data_dir"> &
   Partial<Pick<MaidaConfig, "redact" | "redact_keys" | "max_field_bytes">>;
@@ -158,6 +160,17 @@ function traceDir(traceId: string, config: Pick<MaidaConfig, "data_dir">): strin
   return path;
 }
 
+function runPaths(traceId: string, config: Pick<MaidaConfig, "data_dir">): RunPaths {
+  const dir = traceDir(traceId, config);
+  return {
+    run_dir: dir,
+    meta_json: join(dir, META_JSON),
+    spans_jsonl: join(dir, SPANS_JSONL),
+    run_json: join(dir, RUN_JSON),
+    events_jsonl: join(dir, EVENTS_JSONL),
+  };
+}
+
 function legacyRunDir(runId: string, config: Pick<MaidaConfig, "data_dir">): string {
   if (!runId || typeof runId !== "string") throw new Error("invalid run_id");
   const id = runId.trim();
@@ -195,6 +208,14 @@ function parseIsoMs(ts: unknown): number | null {
   if (typeof ts !== "string" || !ts.trim()) return null;
   const n = new Date(ts.replace("Z", "+00:00")).getTime();
   return Number.isFinite(n) ? n : null;
+}
+
+function traceVersionCompatible(declared: unknown): boolean {
+  if (declared === "0.2") return true;
+  if (typeof declared !== "string") return false;
+  const candidate = SEMVER_RE.exec(declared);
+  const current = SEMVER_RE.exec(SPEC_VERSION);
+  return candidate !== null && current !== null && candidate[1] === current[1] && candidate[2] === current[2];
 }
 
 function mergedRedactConfig(config: StorageConfig) {
@@ -423,7 +444,8 @@ function normalizeSpan(traceId: string, span: Record<string, unknown>): MaidaSpa
 
 export function createRun(runName: string | null, config: Pick<MaidaConfig, "data_dir">): CreatedRun {
   const traceId = newTraceId();
-  const dir = traceDir(traceId, config);
+  const paths = runPaths(traceId, config);
+  const dir = paths.run_dir;
   mkdirSync(dir, { recursive: true });
 
   const startedAt = utcNowIsoMsZ();
@@ -438,20 +460,14 @@ export function createRun(runName: string | null, config: Pick<MaidaConfig, "dat
     counts: defaultCounts(),
   };
 
-  const metaJsonPath = join(dir, META_JSON);
+  const metaJsonPath = paths.meta_json;
   atomicWriteJson(metaJsonPath, meta as unknown as Record<string, unknown>);
   closeSync(openSync(join(dir, SPANS_JSONL), "a"));
 
   return {
     ...meta,
     run_id: traceId,
-    paths: {
-      run_dir: dir,
-      meta_json: metaJsonPath,
-      spans_jsonl: join(dir, SPANS_JSONL),
-      run_json: join(dir, RUN_JSON),
-      events_jsonl: join(dir, EVENTS_JSONL),
-    },
+    paths,
   };
 }
 
@@ -617,6 +633,200 @@ function validateCounts(traceId: string, counts: unknown): asserts counts is Run
   }
 }
 
+function hasField(value: Record<string, unknown>, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, field);
+}
+
+function validateInstallMeta(traceId: string, value: RunMeta): void {
+  const meta = value as unknown as Record<string, unknown>;
+  const required = [
+    "spec_version",
+    "trace_id",
+    "run_name",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+    "status",
+    "counts",
+  ];
+  for (const field of required) {
+    if (!hasField(meta, field)) {
+      throw validationError(traceId, `meta.json is missing field '${field}'`);
+    }
+  }
+  if (!traceVersionCompatible(meta.spec_version)) {
+    throw validationError(
+      traceId,
+      `meta.json declares unsupported spec_version '${String(meta.spec_version)}'`,
+      `upgrade Maida or re-record this trace; the supported format is spec_version '${SPEC_VERSION}'`,
+    );
+  }
+  if (meta.trace_id !== traceId) {
+    throw validationError(traceId, "meta.json trace_id does not match run directory");
+  }
+  if (meta.run_name !== null && typeof meta.run_name !== "string") {
+    throw validationError(traceId, "meta.json field 'run_name' must be a string or null");
+  }
+  if (typeof meta.started_at !== "string") {
+    throw validationError(traceId, "meta.json field 'started_at' must be a string");
+  }
+  if (meta.ended_at !== null && typeof meta.ended_at !== "string") {
+    throw validationError(traceId, "meta.json field 'ended_at' must be a string or null");
+  }
+  if (
+    meta.duration_ms !== null &&
+    (!Number.isInteger(meta.duration_ms) || (meta.duration_ms as number) < 0)
+  ) {
+    throw validationError(
+      traceId,
+      "meta.json field 'duration_ms' must be a non-negative integer or null",
+    );
+  }
+  if (meta.status !== "running" && meta.status !== "ok" && meta.status !== "error") {
+    throw validationError(traceId, "meta.json field 'status' must be running, ok, or error");
+  }
+  validateCounts(traceId, meta.counts);
+}
+
+function validateInstallSpans(traceId: string, values: MaidaSpan[], requireRoot: boolean): void {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw validationError(traceId, "spans.jsonl contains no spans");
+  }
+  const required = [
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "name",
+    "kind",
+    "start_time",
+    "end_time",
+    "duration_ms",
+    "attributes",
+    "events",
+    "status_code",
+    "status_description",
+  ];
+  let roots = 0;
+  values.forEach((value, index) => {
+    const line = index + 1;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw validationError(traceId, `spans.jsonl line ${line} must contain a JSON object`);
+    }
+    const span = value as unknown as Record<string, unknown>;
+    for (const field of required) {
+      if (!hasField(span, field)) {
+        throw validationError(traceId, `spans.jsonl line ${line} is missing field '${field}'`);
+      }
+    }
+    if (span.trace_id !== traceId) {
+      throw validationError(traceId, `spans.jsonl line ${line} trace_id does not match run directory`);
+    }
+    try {
+      validateSpanId(String(span.span_id), "span_id");
+    } catch {
+      throw validationError(traceId, `spans.jsonl line ${line} has an invalid span_id`);
+    }
+    if (span.parent_span_id === null) {
+      roots += 1;
+    } else {
+      try {
+        validateSpanId(String(span.parent_span_id), "parent_span_id");
+      } catch {
+        throw validationError(traceId, `spans.jsonl line ${line} has an invalid parent_span_id`);
+      }
+    }
+    for (const field of ["name", "kind", "start_time", "status_description"]) {
+      if (typeof span[field] !== "string") {
+        throw validationError(traceId, `spans.jsonl line ${line} field '${field}' must be a string`);
+      }
+    }
+    if (span.end_time !== null && typeof span.end_time !== "string") {
+      throw validationError(traceId, `spans.jsonl line ${line} field 'end_time' must be a string or null`);
+    }
+    if (
+      span.duration_ms !== null &&
+      (!Number.isInteger(span.duration_ms) || (span.duration_ms as number) < 0)
+    ) {
+      throw validationError(
+        traceId,
+        `spans.jsonl line ${line} field 'duration_ms' must be a non-negative integer or null`,
+      );
+    }
+    if (!span.attributes || typeof span.attributes !== "object" || Array.isArray(span.attributes)) {
+      throw validationError(traceId, `spans.jsonl line ${line} field 'attributes' must be an object`);
+    }
+    if (!Array.isArray(span.events)) {
+      throw validationError(traceId, `spans.jsonl line ${line} field 'events' must be an array`);
+    }
+    span.events.forEach((value, eventIndex) => {
+      const event = value as Record<string, unknown>;
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        throw validationError(traceId, `spans.jsonl line ${line} event ${eventIndex + 1} must be an object`);
+      }
+      for (const field of ["name", "timestamp", "attributes"]) {
+        if (!hasField(event, field)) {
+          throw validationError(
+            traceId,
+            `spans.jsonl line ${line} event ${eventIndex + 1} is missing field '${field}'`,
+          );
+        }
+      }
+      if (!event.attributes || typeof event.attributes !== "object" || Array.isArray(event.attributes)) {
+        throw validationError(
+          traceId,
+          `spans.jsonl line ${line} event ${eventIndex + 1} field 'attributes' must be an object`,
+        );
+      }
+    });
+    if (span.status_code !== "OK" && span.status_code !== "ERROR" && span.status_code !== "UNSET") {
+      throw validationError(
+        traceId,
+        `spans.jsonl line ${line} field 'status_code' must be OK, ERROR, or UNSET`,
+      );
+    }
+  });
+  if (requireRoot && roots === 0) {
+    throw validationError(traceId, "spans.jsonl has no root span");
+  }
+}
+
+export function installValidatedRun(
+  meta: RunMeta,
+  spans: MaidaSpan[],
+  config: Pick<MaidaConfig, "data_dir">,
+): RunPaths {
+  const traceId = validateTraceId(meta?.trace_id);
+  validateInstallMeta(traceId, meta);
+  validateInstallSpans(traceId, spans, meta.status !== "running");
+
+  const paths = runPaths(traceId, config);
+  if (existsSync(paths.run_dir)) throw new Error(`Run ${traceId} already exists`);
+
+  const runs = runsDir(config);
+  mkdirSync(runs, { recursive: true });
+  const staging = join(runs, `.${traceId}.${randomUUID()}.tmp`);
+  mkdirSync(staging);
+  try {
+    atomicWriteJson(join(staging, META_JSON), meta as unknown as Record<string, unknown>);
+    const spansPath = join(staging, SPANS_JSONL);
+    const fd = openSync(spansPath, "w");
+    try {
+      for (const span of spans) {
+        writeFileSync(fd, `${JSON.stringify(span)}\n`, "utf-8");
+      }
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    if (existsSync(paths.run_dir)) throw new Error(`Run ${traceId} already exists`);
+    renameSync(staging, paths.run_dir);
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
+  }
+  return paths;
+}
+
 export function loadValidatedRun(
   traceId: string,
   config: Pick<MaidaConfig, "data_dir">,
@@ -634,7 +844,7 @@ export function loadValidatedRun(
   } catch {
     throw validationError(id, "meta.json is malformed JSON");
   }
-  if (meta.spec_version != null && meta.spec_version !== SPEC_VERSION) {
+  if (!traceVersionCompatible(meta.spec_version)) {
     throw validationError(
       id,
       `meta.json declares unsupported spec_version '${String(meta.spec_version)}'`,

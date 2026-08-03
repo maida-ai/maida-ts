@@ -25,6 +25,10 @@ for plugin and integration code that needs to write local Maida traces.
 - `loadValidatedRun(traceId, config)` reads current-format `meta.json` and
   `spans.jsonl` and returns `{ meta, spans }`. It is a storage validator, not
   the Python read-side projection or assertion engine.
+- `installValidatedRun(meta, spans, config)` validates a complete normalized
+  payload before filesystem mutation, stages both required artifacts, and
+  atomically installs the run without intentionally replacing an existing
+  destination. It deliberately does not perform provider mapping or redaction.
 - `appendLegacyEvent(runId, event, config)` remains as a narrow compatibility
   helper that writes `runs/<run_id>/events.jsonl`; current `createRun()` and
   `finalizeRun()` do not write legacy `run.json` or `events.jsonl`.
@@ -56,11 +60,12 @@ for plugin and integration code that needs to write local Maida traces.
 
 ## Unsupported Capabilities
 
-- No Maida CLI commands (`demo`, `list`, `export`, `view`, `baseline`,
+- No Maida CLI commands (`demo`, `import`, `list`, `export`, `view`, `baseline`,
   `accept`, `assert`, `diff`, or `init`).
 - No baseline, policy, diff, assertion, PR-comment, or acceptance workflow.
 - No local viewer/server.
-- No framework adapters for LangChain/LangGraph, OpenAI Agents SDK, or CrewAI.
+- No framework adapters for LangChain/LangGraph, OpenAI Agents SDK, CrewAI, or
+  Langfuse.
 - No tracing decorator/context manager, active-run context, guardrail
   enforcement, or automatic recorders.
 - No promise of full Python feature parity.
