@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -10,10 +18,11 @@ import {
   appendEvent,
   appendSpan,
   finalizeRun,
+  installValidatedRun,
   loadValidatedRun,
 } from "../src/storage.js";
 import { newEvent } from "../src/events.js";
-import { EventType } from "../src/types.js";
+import { EventType, type MaidaSpan, type RunMeta } from "../src/types.js";
 import { REDACTED_MARKER, SPEC_VERSION } from "../src/constants.js";
 
 function makeTmpDataDir(): string {
@@ -30,6 +39,36 @@ afterEach(() => {
   }
   cleanupDirs.length = 0;
 });
+
+function completedMeta(traceId: string): RunMeta {
+  return {
+    spec_version: SPEC_VERSION,
+    trace_id: traceId,
+    run_name: "imported",
+    started_at: "2026-01-01T00:00:00.000Z",
+    ended_at: "2026-01-01T00:00:01.000Z",
+    duration_ms: 1000,
+    status: "ok",
+    counts: { llm_calls: 0, tool_calls: 0, errors: 0, loop_warnings: 0 },
+  };
+}
+
+function rootSpan(traceId: string): MaidaSpan {
+  return {
+    trace_id: traceId,
+    span_id: traceId.slice(0, 16),
+    parent_span_id: null,
+    name: "imported",
+    kind: "INTERNAL",
+    start_time: "2026-01-01T00:00:00.000Z",
+    end_time: "2026-01-01T00:00:01.000Z",
+    duration_ms: 1000,
+    attributes: { "maida.meta": "already-normalized", secret: "preserve-me" },
+    events: [],
+    status_code: "OK",
+    status_description: "",
+  };
+}
 
 describe("validateRunId", () => {
   it("accepts a valid UUID v4", () => {
@@ -394,6 +433,24 @@ describe("loadValidatedRun", () => {
     expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(/upgrade Maida/);
   });
 
+  it.each(["0.2", "0.2.7"])("accepts compatible trace version %s", (version) => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const run = createRun("compatible-version", { data_dir: dataDir });
+    finalizeRun(
+      run.trace_id,
+      "ok",
+      { llm_calls: 0, tool_calls: 0, errors: 0, loop_warnings: 0 },
+      { data_dir: dataDir },
+    );
+
+    const meta = JSON.parse(readFileSync(run.paths.meta_json, "utf-8"));
+    meta.spec_version = version;
+    writeFileSync(run.paths.meta_json, JSON.stringify(meta), "utf-8");
+
+    expect(loadValidatedRun(run.trace_id, { data_dir: dataDir }).meta.spec_version).toBe(version);
+  });
+
   it("reports an invalid span id distinctly from malformed JSON", () => {
     const dataDir = makeTmpDataDir();
     cleanupDirs.push(dataDir);
@@ -434,6 +491,78 @@ describe("loadValidatedRun", () => {
     );
 
     expect(() => loadValidatedRun(run.trace_id, { data_dir: dataDir })).toThrow(/different trace_id/);
+  });
+});
+
+describe("installValidatedRun", () => {
+  it("validates and atomically installs an already-normalized run", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const traceId = "90000000000000000000000000000001";
+    const meta = completedMeta(traceId);
+    const spans = [rootSpan(traceId)];
+
+    const paths = installValidatedRun(meta, spans, { data_dir: dataDir });
+
+    expect(paths.run_dir).toBe(join(dataDir, "runs", traceId));
+    expect(loadValidatedRun(traceId, { data_dir: dataDir })).toEqual({ meta, spans });
+    expect(JSON.parse(readFileSync(paths.spans_jsonl, "utf-8")).attributes.secret).toBe(
+      "preserve-me",
+    );
+  });
+
+  it("rejects invalid payloads before creating the runs directory", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const traceId = "90000000000000000000000000000002";
+    const invalid = rootSpan(traceId) as unknown as Record<string, unknown>;
+    delete invalid.events;
+
+    expect(() =>
+      installValidatedRun(completedMeta(traceId), [invalid as unknown as MaidaSpan], {
+        data_dir: dataDir,
+      }),
+    ).toThrow(/missing field 'events'/);
+    expect(existsSync(join(dataDir, "runs"))).toBe(false);
+  });
+
+  it("never overwrites an existing run", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const traceId = "90000000000000000000000000000003";
+    const meta = completedMeta(traceId);
+    const spans = [rootSpan(traceId)];
+    installValidatedRun(meta, spans, { data_dir: dataDir });
+
+    expect(() => installValidatedRun(meta, spans, { data_dir: dataDir })).toThrow(
+      /already exists/,
+    );
+    expect(loadValidatedRun(traceId, { data_dir: dataDir })).toEqual({ meta, spans });
+  });
+
+  it("requires a root span for completed runs", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const traceId = "90000000000000000000000000000004";
+    const child = { ...rootSpan(traceId), parent_span_id: "1111111111111111" };
+
+    expect(() =>
+      installValidatedRun(completedMeta(traceId), [child], { data_dir: dataDir }),
+    ).toThrow(/no root span/);
+    expect(existsSync(join(dataDir, "runs"))).toBe(false);
+  });
+
+  it("cleans its staging directory when serialization fails", () => {
+    const dataDir = makeTmpDataDir();
+    cleanupDirs.push(dataDir);
+    const traceId = "90000000000000000000000000000005";
+    const span = rootSpan(traceId);
+    span.attributes = { unsupported: 1n };
+
+    expect(() =>
+      installValidatedRun(completedMeta(traceId), [span], { data_dir: dataDir }),
+    ).toThrow(/BigInt/);
+    expect(readdirSync(join(dataDir, "runs"))).toEqual([]);
   });
 });
 

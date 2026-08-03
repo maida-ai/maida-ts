@@ -17,7 +17,7 @@ describe("constants", () => {
   });
 
   it("SPEC_VERSION matches Python", () => {
-    expect(SPEC_VERSION).toBe("0.2");
+    expect(SPEC_VERSION).toBe("0.2.0");
   });
 
   it("DEPTH_LIMIT matches Python", () => {

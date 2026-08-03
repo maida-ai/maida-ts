@@ -30,6 +30,7 @@ export {
   appendSpan,
   appendLegacyEvent,
   finalizeRun,
+  installValidatedRun,
   loadValidatedRun,
   validateRunId,
   validateTraceId,

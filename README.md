@@ -94,7 +94,7 @@ The resulting trace lives under `~/.maida/runs/<trace_id>/` by default and can b
 
 ## Trace compatibility
 
-Current TS-produced traces target Maida `spec_version: "0.2"` and use the same
+Current TS-produced traces target Maida `spec_version: "0.2.0"` and use the same
 local storage layout as Python:
 
 ```text
@@ -106,8 +106,15 @@ local storage layout as Python:
 `meta.json` contains the run-level `spec_version`, `trace_id`, status, timing,
 and counts. `spans.jsonl` contains one span JSON object per line; span rows do
 not include their own `spec_version`. `loadValidatedRun()` validates this
-current storage shape and tolerates older TS-produced span rows that include an
-extra span-level `spec_version` field by ignoring that additive field.
+current storage shape, accepts the legacy `"0.2"` spelling and compatible
+`0.2.x` patch versions, and tolerates older TS-produced span rows that include
+an extra span-level `spec_version` field by ignoring that additive field.
+
+`installValidatedRun()` installs a complete, already-normalized current-format
+run through the same strict metadata and span checks before making it visible.
+It does not normalize or redact provider payloads. Callers must apply
+`redactAndTruncate()` while translating external data, then pass the resulting
+metadata and spans; existing run directories are never intentionally replaced.
 
 The compatibility fixtures in `tests/fixtures/traces/` cover normal,
 tool-loop, running/missing-terminal-state, and malformed trace cases for other
@@ -118,7 +125,7 @@ Maida repos to copy or read during cross-repo conformance work.
 - Types and schema: `EventType`, `MaidaEvent`, `RunMeta`, `RunCounts`, `MaidaConfig`, `GuardrailParams`
 - Constants: `SPEC_VERSION`, `REDACTED_MARKER`, `TRUNCATED_MARKER`, `DEPTH_LIMIT`, `defaultCounts`
 - Events: `newEvent`, `utcNowIsoMsZ`, `ensureJsonSafe`
-- Storage: `createRun`, `appendEvent`, `appendSpan`, `appendLegacyEvent`, `finalizeRun`, `loadValidatedRun`, `validateTraceId`, `validateRunId`
+- Storage: `createRun`, `appendEvent`, `appendSpan`, `appendLegacyEvent`, `finalizeRun`, `installValidatedRun`, `loadValidatedRun`, `validateTraceId`, `validateRunId`
 - Config: `loadConfig`
 - Redaction: `redactAndTruncate`, `truncateString`, `keyMatchesRedact`, `normalizeUsage`, `buildErrorPayload`
 - Loop detection: `computeSignature`, `detectLoop`, `patternKey`
@@ -129,8 +136,9 @@ Maida repos to copy or read during cross-repo conformance work.
 - `loadValidatedRun()` is a storage validator, not the Python projection,
   baseline, diff, assertion, or viewer engine.
 - Read-side product workflows remain in the Python Maida implementation.
-- Framework adapters, tracing decorators/context managers, guardrail
-  enforcement, the CLI, and the local viewer are Python-only surfaces.
+- Framework adapters (including Langfuse import), tracing decorators/context
+  managers, guardrail enforcement, the CLI, and the local viewer are
+  Python-only surfaces.
 - The package does not promise full Python feature parity.
 - Compatibility target is Linux and macOS plugin environments.
 
