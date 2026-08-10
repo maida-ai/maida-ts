@@ -34,8 +34,8 @@ describe("Python-owned current-main contract", () => {
     const schemas = contract.schemas as Record<string, string>;
     const cli = contract.cli as Record<string, string>;
 
-    expect(contract.engine_ref).toBe("main");
-    expect(contract.action_ref).toBe("maida-ai/maida-assert@main");
+    expect(contract.engine_ref).toBe("v0.5.0");
+    expect(contract.action_ref).toBe("maida-ai/maida-assert@v5");
     expect(schemas.trace).toBe(SPEC_VERSION);
     expect(cli.primary_gate).toBe("run");
     expect(cli.legacy_gate).toBe("assert");
