@@ -112,13 +112,24 @@ an extra span-level `spec_version` field by ignoring that additive field.
 
 `installValidatedRun()` installs a complete, already-normalized current-format
 run through the same strict metadata and span checks before making it visible.
+Both validated read paths enforce Python's RFC 3339 timestamp, span/event type,
+single-root, parent-reference, duplicate-ID, and parent-cycle rules. Running
+traces may temporarily reference a parent that has not been written yet, just
+as they may in Python; completed traces may not.
 It does not normalize or redact provider payloads. Callers must apply
 `redactAndTruncate()` while translating external data, then pass the resulting
 metadata and spans; existing run directories are never intentionally replaced.
 
+Loop detection also mirrors Python's shape-only tool argument signatures. Raw
+argument values are never included in a signature. `LoopWarningPayload`
+includes `pattern_type` (`repeated_call` or `cycle`) and `pattern_length`.
+
 The compatibility fixtures in `tests/fixtures/traces/` cover normal,
 tool-loop, running/missing-terminal-state, and malformed trace cases for other
 Maida repos to copy or read during cross-repo conformance work.
+Python-owned contracts under `tests/contracts/` cover shared versions,
+validation decisions, and loop behavior. Python remains authoritative when a
+contract changes.
 
 ## Exposed API
 

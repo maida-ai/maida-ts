@@ -52,11 +52,12 @@ for plugin and integration code that needs to write local Maida traces.
   wrappers that write `run.json` and `events.jsonl`. TypeScript's main
   `createRun()` path writes the current OTel-style layout, while
   `appendLegacyEvent()` only appends legacy events for old callers.
-- Python's current-format validator checks required `meta.json` fields, field
-  types, span event structure, and root-span requirements. TypeScript validates
-  the important storage shape, trace IDs, counts, status, span IDs, and root
-  presence for finalized runs, but its normalization path is intentionally more
-  forgiving for caller-provided spans.
+- Python's current-format validator is canonical. TypeScript's validated read
+  and install paths mirror its required fields, RFC 3339 timestamps, field
+  types, allowed values, duplicate span IDs, root cardinality, parent
+  references for completed traces, and parent-cycle rejection. TypeScript
+  keeps its existing fail-fast `Error` API instead of reproducing Python's
+  diagnostic collection objects.
 
 ## Unsupported Capabilities
 
@@ -81,6 +82,9 @@ for plugin and integration code that needs to write local Maida traces.
 - These fixtures are the TypeScript-owned inputs for cross-repo consumers. This
   package does not embed or invoke the Python CLI in its test suite; Python-side
   projection and CLI conformance remain in the canonical Python repository.
+- `tests/contracts/` vendors Python-owned current-version, trace-validation,
+  and loop-detection vectors. The TypeScript test suite executes those vectors
+  directly so accepted and rejected structures stay aligned with Python.
 
 The writer/reader compatibility work was completed by
 [maida-ts#4](https://github.com/maida-ai/maida-ts/issues/4), and the conformance

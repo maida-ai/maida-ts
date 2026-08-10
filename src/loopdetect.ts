@@ -6,12 +6,47 @@
  */
 
 const MISSING_EVENT_ID = "__MISSING__";
+const MAX_SIGNATURE_DEPTH = 4;
+const MAX_SEQUENCE_ITEMS = 3;
 
 export interface LoopWarningPayload {
   pattern: string;
+  pattern_type: "repeated_call" | "cycle";
+  pattern_length: number;
   repetitions: number;
   window_size: number;
   evidence_event_ids: string[];
+}
+
+function typeName(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "number") return Number.isInteger(value) ? "int" : "float";
+  if (typeof value === "string") return "str";
+  if (typeof value === "boolean") return "bool";
+  return typeof value;
+}
+
+function structuralSignature(value: unknown, depth = 0): string {
+  if (depth >= MAX_SIGNATURE_DEPTH) return "...";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    const itemShapes: string[] = [];
+    for (const item of value.slice(0, MAX_SEQUENCE_ITEMS)) {
+      const shape = structuralSignature(item, depth + 1);
+      if (!itemShapes.includes(shape)) itemShapes.push(shape);
+    }
+    const suffix = value.length > MAX_SEQUENCE_ITEMS ? ",..." : "";
+    return `[${itemShapes.join("|")}${suffix}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    if (keys.length === 0) return "{}";
+    return `{${keys
+      .map((key) => `${key}:${structuralSignature(record[key], depth + 1)}`)
+      .join(",")}}`;
+  }
+  return typeName(value);
 }
 
 export function computeSignature(event: Record<string, unknown>): string {
@@ -24,7 +59,11 @@ export function computeSignature(event: Record<string, unknown>): string {
   if (t === "TOOL_CALL") {
     const payload = (event.payload ?? {}) as Record<string, unknown>;
     const toolName = (payload.tool_name as string) || "UNKNOWN";
-    return "TOOL_CALL:" + String(toolName);
+    let signature = "TOOL_CALL:" + String(toolName);
+    if (payload.args !== null && payload.args !== undefined) {
+      signature += " args:" + structuralSignature(payload.args);
+    }
+    return signature;
   }
   return String(t ?? "");
 }
@@ -66,6 +105,8 @@ export function detectLoop(
       const pattern = block.join(" -> ");
       return {
         pattern,
+        pattern_type: m === 1 ? "repeated_call" : "cycle",
+        pattern_length: m,
         repetitions,
         window_size: eventsWindow.length,
         evidence_event_ids: evidenceEventIds,

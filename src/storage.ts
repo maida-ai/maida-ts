@@ -37,6 +37,9 @@ const SPAN_ID_LEN = 16;
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HEX_RE = /^[0-9a-f]+$/;
 const SEMVER_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const RFC3339_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/i;
+const SPAN_KINDS = new Set(["INTERNAL", "CLIENT", "SERVER", "PRODUCER", "CONSUMER"]);
 
 type StorageConfig = Pick<MaidaConfig, "data_dir"> &
   Partial<Pick<MaidaConfig, "redact" | "redact_keys" | "max_field_bytes">>;
@@ -588,7 +591,11 @@ function validationError(
   );
 }
 
-function readSpansForValidation(traceId: string, config: Pick<MaidaConfig, "data_dir">): MaidaSpan[] {
+function readSpansForValidation(
+  traceId: string,
+  config: Pick<MaidaConfig, "data_dir">,
+  requireRoot: boolean,
+): MaidaSpan[] {
   const path = join(traceDir(traceId, config), SPANS_JSONL);
   if (!existsSync(path)) throw validationError(traceId, "required file spans.jsonl is missing");
   const lines = readFileSync(path, "utf-8")
@@ -596,7 +603,7 @@ function readSpansForValidation(traceId: string, config: Pick<MaidaConfig, "data
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length === 0) throw validationError(traceId, "spans.jsonl contains no spans");
-  return lines.map((line, index) => {
+  const rawSpans = lines.map((line, index) => {
     let raw: unknown;
     try {
       raw = JSON.parse(line);
@@ -606,18 +613,32 @@ function readSpansForValidation(traceId: string, config: Pick<MaidaConfig, "data
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw validationError(traceId, `spans.jsonl line ${index + 1} must contain a JSON object`);
     }
-    let span: MaidaSpan;
-    try {
-      span = normalizeSpan(traceId, raw as Record<string, unknown>);
-    } catch (e) {
-      const detail = e instanceof Error ? e.message : "an invalid span field";
-      throw validationError(traceId, `spans.jsonl line ${index + 1} has ${detail}`);
-    }
-    if (span.trace_id !== traceId) {
-      throw validationError(traceId, `spans.jsonl line ${index + 1} belongs to a different trace_id`);
-    }
-    return span;
+    return raw as Record<string, unknown>;
   });
+  validateInstallSpans(traceId, rawSpans as unknown as MaidaSpan[], requireRoot);
+  return rawSpans.map((span) => normalizeSpan(traceId, span));
+}
+
+function isRfc3339(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = RFC3339_RE.exec(value);
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offsetHour = offsetHourText === undefined ? 0 : Number(offsetHourText);
+  const offsetMinute = offsetMinuteText === undefined ? 0 : Number(offsetMinuteText);
+  if (year < 1 || month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) {
+    return false;
+  }
+  if (offsetHour > 23 || offsetMinute > 59) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysByMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysByMonth[month - 1];
 }
 
 function validateCounts(traceId: string, counts: unknown): asserts counts is RunCounts {
@@ -667,11 +688,11 @@ function validateInstallMeta(traceId: string, value: RunMeta): void {
   if (meta.run_name !== null && typeof meta.run_name !== "string") {
     throw validationError(traceId, "meta.json field 'run_name' must be a string or null");
   }
-  if (typeof meta.started_at !== "string") {
-    throw validationError(traceId, "meta.json field 'started_at' must be a string");
+  if (!isRfc3339(meta.started_at)) {
+    throw validationError(traceId, "meta.json field 'started_at' must be an RFC 3339 date-time with a timezone");
   }
-  if (meta.ended_at !== null && typeof meta.ended_at !== "string") {
-    throw validationError(traceId, "meta.json field 'ended_at' must be a string or null");
+  if (meta.ended_at !== null && !isRfc3339(meta.ended_at)) {
+    throw validationError(traceId, "meta.json field 'ended_at' must be an RFC 3339 date-time or null");
   }
   if (
     meta.duration_ms !== null &&
@@ -707,41 +728,68 @@ function validateInstallSpans(traceId: string, values: MaidaSpan[], requireRoot:
     "status_description",
   ];
   let roots = 0;
+  const spanIds = new Set<string>();
+  const parents = new Map<string, string | null>();
   values.forEach((value, index) => {
     const line = index + 1;
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw validationError(traceId, `spans.jsonl line ${line} must contain a JSON object`);
     }
     const span = value as unknown as Record<string, unknown>;
+    if (hasField(span, "trace_id") && (typeof span.trace_id !== "string" || span.trace_id !== traceId)) {
+      throw validationError(traceId, `spans.jsonl line ${line} belongs to a different trace_id`);
+    }
+    if (hasField(span, "span_id")) {
+      try {
+        if (typeof span.span_id !== "string") throw new Error("invalid span_id");
+        validateSpanId(span.span_id, "span_id");
+      } catch {
+        throw validationError(traceId, `spans.jsonl line ${line} has an invalid span_id`);
+      }
+    }
+    if (hasField(span, "parent_span_id") && span.parent_span_id !== null) {
+      try {
+        if (typeof span.parent_span_id !== "string") {
+          throw new Error("invalid parent_span_id");
+        }
+        validateSpanId(span.parent_span_id, "parent_span_id");
+      } catch {
+        throw validationError(traceId, `spans.jsonl line ${line} has an invalid parent_span_id`);
+      }
+    }
     for (const field of required) {
       if (!hasField(span, field)) {
         throw validationError(traceId, `spans.jsonl line ${line} is missing field '${field}'`);
       }
     }
-    if (span.trace_id !== traceId) {
-      throw validationError(traceId, `spans.jsonl line ${line} trace_id does not match run directory`);
+    const spanId = String(span.span_id);
+    if (spanIds.has(spanId)) {
+      throw validationError(traceId, `spans.jsonl line ${line} duplicates an earlier span_id`);
     }
-    try {
-      validateSpanId(String(span.span_id), "span_id");
-    } catch {
-      throw validationError(traceId, `spans.jsonl line ${line} has an invalid span_id`);
-    }
+    spanIds.add(spanId);
     if (span.parent_span_id === null) {
       roots += 1;
-    } else {
-      try {
-        validateSpanId(String(span.parent_span_id), "parent_span_id");
-      } catch {
-        throw validationError(traceId, `spans.jsonl line ${line} has an invalid parent_span_id`);
-      }
     }
-    for (const field of ["name", "kind", "start_time", "status_description"]) {
+    parents.set(spanId, span.parent_span_id === null ? null : String(span.parent_span_id));
+    for (const field of ["name", "status_description"]) {
       if (typeof span[field] !== "string") {
         throw validationError(traceId, `spans.jsonl line ${line} field '${field}' must be a string`);
       }
     }
-    if (span.end_time !== null && typeof span.end_time !== "string") {
-      throw validationError(traceId, `spans.jsonl line ${line} field 'end_time' must be a string or null`);
+    if (!SPAN_KINDS.has(String(span.kind))) {
+      throw validationError(
+        traceId,
+        `spans.jsonl line ${line} field 'kind' must be INTERNAL, CLIENT, SERVER, PRODUCER, or CONSUMER`,
+      );
+    }
+    if (!isRfc3339(span.start_time)) {
+      throw validationError(
+        traceId,
+        `spans.jsonl line ${line} field 'start_time' must be an RFC 3339 date-time with a timezone`,
+      );
+    }
+    if (span.end_time !== null && !isRfc3339(span.end_time)) {
+      throw validationError(traceId, `spans.jsonl line ${line} field 'end_time' must be an RFC 3339 date-time or null`);
     }
     if (
       span.duration_ms !== null &&
@@ -771,6 +819,18 @@ function validateInstallSpans(traceId: string, values: MaidaSpan[], requireRoot:
           );
         }
       }
+      if (typeof event.name !== "string") {
+        throw validationError(
+          traceId,
+          `spans.jsonl line ${line} event ${eventIndex + 1} field 'name' must be a string`,
+        );
+      }
+      if (!isRfc3339(event.timestamp)) {
+        throw validationError(
+          traceId,
+          `spans.jsonl line ${line} event ${eventIndex + 1} field 'timestamp' must be an RFC 3339 date-time with a timezone`,
+        );
+      }
       if (!event.attributes || typeof event.attributes !== "object" || Array.isArray(event.attributes)) {
         throw validationError(
           traceId,
@@ -787,6 +847,33 @@ function validateInstallSpans(traceId: string, values: MaidaSpan[], requireRoot:
   });
   if (requireRoot && roots === 0) {
     throw validationError(traceId, "spans.jsonl has no root span");
+  }
+  if (roots > 1) {
+    throw validationError(traceId, "spans.jsonl defines more than one root span");
+  }
+  if (requireRoot) {
+    for (const [spanId, parent] of parents) {
+      if (parent !== null && !spanIds.has(parent)) {
+        throw validationError(traceId, `span ${spanId} references a parent_span_id not present in this trace`);
+      }
+    }
+  }
+  const inspected = new Set<string>();
+  for (const start of parents.keys()) {
+    if (inspected.has(start)) continue;
+    const ordered: string[] = [];
+    const positions = new Map<string, number>();
+    let current: string | null = start;
+    while (current !== null && parents.has(current)) {
+      if (positions.has(current)) {
+        throw validationError(traceId, `span ${current} participates in a parent_span_id cycle`);
+      }
+      if (inspected.has(current)) break;
+      positions.set(current, ordered.length);
+      ordered.push(current);
+      current = parents.get(current) ?? null;
+    }
+    ordered.forEach((spanId) => inspected.add(spanId));
   }
 }
 
@@ -844,25 +931,9 @@ export function loadValidatedRun(
   } catch {
     throw validationError(id, "meta.json is malformed JSON");
   }
-  if (!traceVersionCompatible(meta.spec_version)) {
-    throw validationError(
-      id,
-      `meta.json declares unsupported spec_version '${String(meta.spec_version)}'`,
-      `upgrade Maida or re-record this trace; the supported format is spec_version '${SPEC_VERSION}'`,
-    );
-  }
-  if (meta.trace_id !== id) {
-    throw validationError(id, "meta.json trace_id does not match run directory");
-  }
-  validateCounts(id, meta.counts);
-  if (meta.status !== "running" && meta.status !== "ok" && meta.status !== "error") {
-    throw validationError(id, "meta.json field 'status' must be running, ok, or error");
-  }
+  validateInstallMeta(id, meta as unknown as RunMeta);
 
-  const spans = readSpansForValidation(id, config);
-  if (meta.status !== "running" && !spans.some((span) => span.parent_span_id === null)) {
-    throw validationError(id, "spans.jsonl has no root span");
-  }
+  const spans = readSpansForValidation(id, config, meta.status !== "running");
 
   return {
     meta: {
@@ -873,7 +944,7 @@ export function loadValidatedRun(
       ended_at: meta.ended_at == null ? null : String(meta.ended_at),
       duration_ms: typeof meta.duration_ms === "number" ? meta.duration_ms : null,
       status: String(meta.status),
-      counts: meta.counts,
+      counts: meta.counts as RunCounts,
     },
     spans,
   };

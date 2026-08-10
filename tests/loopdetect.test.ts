@@ -26,6 +26,17 @@ describe("computeSignature", () => {
     );
   });
 
+  it("TOOL_CALL includes argument structure without scalar values", () => {
+    expect(
+      computeSignature(
+        makeEvent("TOOL_CALL", {
+          tool_name: "search",
+          args: { query: "secret", filters: { limit: 10, archived: false } },
+        }),
+      ),
+    ).toBe("TOOL_CALL:search args:{filters:{archived:bool,limit:int},query:str}");
+  });
+
   it("TOOL_CALL without tool_name defaults to UNKNOWN", () => {
     expect(computeSignature(makeEvent("TOOL_CALL", {}))).toBe("TOOL_CALL:UNKNOWN");
   });
@@ -64,6 +75,8 @@ describe("detectLoop", () => {
     const result = detectLoop(events, 12, 3);
     expect(result).not.toBeNull();
     expect(result!.pattern).toBe("TOOL_CALL:search");
+    expect(result!.pattern_type).toBe("repeated_call");
+    expect(result!.pattern_length).toBe(1);
     expect(result!.repetitions).toBe(3);
   });
 
@@ -79,6 +92,8 @@ describe("detectLoop", () => {
     const result = detectLoop(events, 12, 3);
     expect(result).not.toBeNull();
     expect(result!.pattern).toBe("LLM_CALL:gpt-4 -> TOOL_CALL:search");
+    expect(result!.pattern_type).toBe("cycle");
+    expect(result!.pattern_length).toBe(2);
     expect(result!.repetitions).toBe(3);
   });
 
