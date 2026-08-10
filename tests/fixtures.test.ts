@@ -201,7 +201,9 @@ describe("cross-repo trace fixtures", () => {
     const loopWarning = root?.events.find((event) => event.name === "maida.loop.warning");
     expect(loopWarning?.attributes).toEqual(
       expect.objectContaining({
-        pattern: "TOOL_CALL:lookup",
+        pattern: "TOOL_CALL:lookup args:{id:str}",
+        pattern_type: "repeated_call",
+        pattern_length: 1,
         repetitions: 3,
         window_size: 3,
       }),
