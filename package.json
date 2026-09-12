@@ -1,6 +1,6 @@
 {
   "name": "@maida-ai/core",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "description": "TypeScript mirror for Maida write-side trace events and local-first run storage.",
   "type": "module",
   "main": "dist/index.js",
