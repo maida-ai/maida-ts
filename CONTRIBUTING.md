@@ -2,6 +2,10 @@
 
 Thanks for contributing.
 
+## Versioning
+
+`@maida-ai/core` uses the Python engine's `MAJOR.MINOR` compatibility line and its own `PATCH` number, with immutable full release tags. Release on a new engine line only after the Python-owned trace contract, conformance fixtures, and supported reader versions pass. Advance this package's patch for its own compatible fixes. During `0.x`, document incompatible changes when adopting a new minor line. Do not publish an empty release solely because `maida-ai` released. See the [cross-repository policy](https://github.com/maida-ai/maida/blob/main/CONTRIBUTING.md#versioning-and-compatibility).
+
 ## Source of truth policy
 
 The Python `maida` package is the source of truth.
