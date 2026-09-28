@@ -9,7 +9,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import yaml from "js-yaml";
+import { load as loadYamlDoc } from "js-yaml";
 import type { MaidaConfig, GuardrailParams } from "./types.js";
 
 const DEFAULT_REDACT = true;
@@ -32,7 +32,7 @@ const MIN_LOOP_REPETITIONS = 2;
 function loadYaml(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   try {
-    const data = yaml.load(readFileSync(path, "utf-8"));
+    const data = loadYamlDoc(readFileSync(path, "utf-8"));
     return typeof data === "object" && data !== null && !Array.isArray(data)
       ? (data as Record<string, unknown>)
       : {};
