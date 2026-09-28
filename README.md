@@ -8,6 +8,15 @@ TypeScript mirror for Maida.
 
 Python remains the source of truth for behavior and schema.
 
+## First time using Maida?
+
+```bash
+uv tool install "maida-ai==0.5.3"
+maida demo --regression
+```
+
+Expect a deliberate FAIL and a PR-comment preview. Continue with the [released coding-agent walkthrough](https://maida.ai/docs/getting-started/): capture one task, review a few checks, prove pass/fail/repair, then add CI. Runnable examples and demos live together in [maida-tutorials](https://github.com/maida-ai/maida-tutorials).
+
 ## What this package is
 
 - A small TS library that mirrors core Maida schema and helpers.
