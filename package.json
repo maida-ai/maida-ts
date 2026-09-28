@@ -30,15 +30,14 @@
   ],
   "license": "Apache-2.0",
   "dependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^5.4.2"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.1.0"
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   }
 }
