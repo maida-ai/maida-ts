@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("Python-owned current-main contract", () => {
-  it("uses Python's trace version and main development channel", () => {
+  it("uses Python's released trace and Action contracts", () => {
     const contract = readJson(join(CONTRACTS, "current-main.json"));
     const schemas = contract.schemas as Record<string, string>;
     const cli = contract.cli as Record<string, string>;
@@ -38,7 +38,7 @@ describe("Python-owned current-main contract", () => {
     expect(contract.engine_ref).toMatch(
       /^v\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+)?$/,
     );
-    expect(contract.action_ref).toBe("maida-ai/maida-assert@v5");
+    expect(contract.action_ref).toBe(`maida-ai/maida-assert@${contract.engine_ref}`);
     expect(schemas.trace).toBe(SPEC_VERSION);
     expect(cli.primary_gate).toBe("run");
     expect(cli.legacy_gate).toBe("assert");
