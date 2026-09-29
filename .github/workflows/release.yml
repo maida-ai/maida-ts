@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run lint
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # Create the release and attach its artifacts.
+      id-token: write # Request the short-lived signing identity.
+      attestations: write # Store provenance in GitHub's attestation service.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Build release archive and checksums
+        id: archive
+        shell: bash
+        run: bash scripts/build_release.sh "$RUNNER_TEMP/release"
+      - name: Attest release archive
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/release/maida-ts.tar.gz
+      - name: Verify provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          gh attestation verify "$RUNNER_TEMP/release/maida-ts.tar.gz" \
+            --bundle "$ATTESTATION_BUNDLE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF"
+      - name: Create draft release with verified assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          IS_PRERELEASE: ${{ steps.archive.outputs.prerelease }}
+        run: |
+          release_flags=(--draft --verify-tag --latest=false)
+          case "$IS_PRERELEASE" in
+            true) release_flags+=(--prerelease --generate-notes) ;;
+            false)
+              notes_file="$RUNNER_TEMP/release/release-notes.md"
+              awk -v heading="## $GITHUB_REF_NAME" '
+                $0 == heading { found = 1; next }
+                found && /^## / { exit }
+                found { print }
+                END { if (!found) exit 2 }
+              ' "$GITHUB_WORKSPACE/CHANGELOG.md" > "$notes_file" || {
+                echo "::error::CHANGELOG.md has no notes for $GITHUB_REF_NAME." >&2
+                exit 2
+              }
+              if [ ! -s "$notes_file" ]; then
+                echo "::error::CHANGELOG.md has empty notes for $GITHUB_REF_NAME." >&2
+                exit 2
+              fi
+              release_flags+=(--notes-file "$notes_file")
+              ;;
+            *) echo '::error::Missing or invalid release classification.' >&2; exit 2 ;;
+          esac
+          cp "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/release/provenance.jsonl"
+          cd "$RUNNER_TEMP/release"
+          sha256sum --check SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            "${release_flags[@]}" \
+            maida-ts.tar.gz SHA256SUMS provenance.jsonl
