@@ -2,6 +2,12 @@
   "name": "@maida-ai/core",
   "version": "0.6.0",
   "description": "TypeScript mirror for Maida write-side trace events and local-first run storage.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maida-ai/maida-ts.git"
+  },
+  "homepage": "https://github.com/maida-ai/maida-ts#readme",
+  "bugs": "https://github.com/maida-ai/maida-ts/issues",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,6 +22,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
@@ -29,6 +36,10 @@
     "local-first"
   ],
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dependencies": {
     "js-yaml": "^5.4.2"
   },
