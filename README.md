@@ -2,7 +2,7 @@
 
 TypeScript mirror for Maida.
 
-**Versioning:** This package shares the Python engine's `MAJOR.MINOR` compatibility line and has its own patch releases. Compatibility is checked against the shared trace contract; matching numbers alone do not establish feature parity. See [contributing](CONTRIBUTING.md#versioning).
+**Versioning:** This package shares the Python engine's `MAJOR.MINOR` compatibility line and has its own patch releases. Compatibility is checked against the shared trace contract; matching numbers alone do not establish feature parity. See [contributing](https://github.com/maida-ai/maida-ts/blob/main/CONTRIBUTING.md#versioning).
 
 `@maida-ai/core` is a limited, write-side mirror of the main Maida project at `github.com/maida-ai/maida.git`. It helps TS/JS integrations write local trace data in the same on-disk format that the Python Maida tooling reads.
 
