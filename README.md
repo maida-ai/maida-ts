@@ -11,7 +11,7 @@ Python remains the source of truth for behavior and schema.
 ## First time using Maida?
 
 ```bash
-uv tool install "maida-ai==0.5.3"
+uv tool install "maida-ai==0.6.0"
 maida demo --regression
 ```
 
