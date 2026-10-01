@@ -5,9 +5,9 @@
  * Pure functions, no I/O.
  */
 
+import { createHash } from "node:crypto";
+
 const MISSING_EVENT_ID = "__MISSING__";
-const MAX_SIGNATURE_DEPTH = 4;
-const MAX_SEQUENCE_ITEMS = 3;
 
 export interface LoopWarningPayload {
   pattern: string;
@@ -18,37 +18,31 @@ export interface LoopWarningPayload {
   evidence_event_ids: string[];
 }
 
-function typeName(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "number") return Number.isInteger(value) ? "int" : "float";
-  if (typeof value === "string") return "str";
-  if (typeof value === "boolean") return "bool";
-  return typeof value;
-}
-
-function structuralSignature(value: unknown, depth = 0): string {
-  if (depth >= MAX_SIGNATURE_DEPTH) return "...";
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    const itemShapes: string[] = [];
-    for (const item of value.slice(0, MAX_SEQUENCE_ITEMS)) {
-      const shape = structuralSignature(item, depth + 1);
-      if (!itemShapes.includes(shape)) itemShapes.push(shape);
-    }
-    const suffix = value.length > MAX_SEQUENCE_ITEMS ? ",..." : "";
-    return `[${itemShapes.join("|")}${suffix}]`;
+// Tagged containers prevent collisions with scalar encodings. IEEE-754 bytes
+// give Python/JS numbers the same identity without JSON formatting differences.
+function canonicalArgs(value: unknown): unknown {
+  if (value === null || typeof value === "boolean" || typeof value === "string") return value;
+  if (typeof value === "number") {
+    const bytes = Buffer.alloc(8);
+    bytes.writeDoubleBE(value === 0 ? 0 : value);
+    return ["number", bytes.toString("hex")];
   }
-  if (value !== null && typeof value === "object") {
+  if (Array.isArray(value)) return ["array", value.map(canonicalArgs)];
+  if (typeof value === "object") {
     const record = value as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
-    if (keys.length === 0) return "{}";
-    return `{${keys
-      .map((key) => `${key}:${structuralSignature(record[key], depth + 1)}`)
-      .join(",")}}`;
+    return ["object", Object.keys(record).sort().map((key) => [key, canonicalArgs(record[key])])];
   }
-  return typeName(value);
+  throw new TypeError("Loop arguments must be normalized JSON values");
 }
 
+function argumentFingerprint(args: unknown): string {
+  // Match Python ensure_ascii=True, including UTF-16 surrogate pairs.
+  const canonical = JSON.stringify(canonicalArgs(args)).replace(/[\u007f-\uffff]/g,
+    (char) => "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0"));
+  return createHash("sha256").update(canonical, "ascii").digest("hex");
+}
+
+/** Callers must apply configured redaction/truncation before supplying args. */
 export function computeSignature(event: Record<string, unknown>): string {
   const t = event.event_type;
   if (t === "LLM_CALL") {
@@ -61,7 +55,7 @@ export function computeSignature(event: Record<string, unknown>): string {
     const toolName = (payload.tool_name as string) || "UNKNOWN";
     let signature = "TOOL_CALL:" + String(toolName);
     if (payload.args !== null && payload.args !== undefined) {
-      signature += " args:" + structuralSignature(payload.args);
+      signature += " args:sha256:" + argumentFingerprint(payload.args);
     }
     return signature;
   }

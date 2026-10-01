@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Loop argument identity:** loop equality now uses tool name and a bounded fingerprint of canonicalized, redacted arguments, matching Python. Distinct commands and file paths no longer look like repeated actions; identical calls and alternating argument cycles still warn without displaying raw argument values. Callers must sanitize arguments before invoking loop helpers; existing stored warnings keep their original patterns.
+
 ## v0.6.0
 
 Install the TypeScript trace writer with `npm install @maida-ai/core@0.6.0`. This package follows the Python `maida-ai` 0.6 compatibility line while keeping its limited write-side scope. Python remains the source of truth for behavior and schema.

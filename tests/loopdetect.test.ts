@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSignature, detectLoop, patternKey } from "../src/loopdetect.js";
+import { redactAndTruncate } from "../src/redact.js";
 
 function makeEvent(
   eventType: string,
@@ -10,6 +11,10 @@ function makeEvent(
 }
 
 describe("computeSignature", () => {
+  it("rejects unnormalized arguments without printing them", () => {
+    expect(() => computeSignature(makeEvent("TOOL_CALL", { tool_name: "inspect", args: Symbol("private") })))
+      .toThrow("Loop arguments must be normalized JSON values");
+  });
   it("LLM_CALL with model", () => {
     expect(computeSignature(makeEvent("LLM_CALL", { model: "gpt-4" }))).toBe(
       "LLM_CALL:gpt-4",
@@ -26,7 +31,7 @@ describe("computeSignature", () => {
     );
   });
 
-  it("TOOL_CALL includes argument structure without scalar values", () => {
+  it("TOOL_CALL includes a bounded digest without scalar values", () => {
     expect(
       computeSignature(
         makeEvent("TOOL_CALL", {
@@ -34,7 +39,7 @@ describe("computeSignature", () => {
           args: { query: "secret", filters: { limit: 10, archived: false } },
         }),
       ),
-    ).toBe("TOOL_CALL:search args:{filters:{archived:bool,limit:int},query:str}");
+    ).toMatch(/^TOOL_CALL:search args:sha256:[a-f0-9]{64}$/);
   });
 
   it("TOOL_CALL without tool_name defaults to UNKNOWN", () => {
@@ -52,6 +57,62 @@ describe("computeSignature", () => {
 });
 
 describe("detectLoop", () => {
+  it("uses caller redaction before equality and keeps warnings private", () => {
+    const events = [0, 1, 2].map((i) => makeEvent("TOOL_CALL", {
+      tool_name: "Bash",
+      args: redactAndTruncate({ command: "private-command", private_value: `secret-${i}` },
+        { redact: true, redact_keys: ["private_value"], max_field_bytes: 1000 }),
+    }));
+    const warning = detectLoop(events, 12, 3)!;
+    expect(warning.pattern_length).toBe(1);
+    expect(warning.pattern).toBe(computeSignature(events[0]));
+    expect(JSON.stringify(warning)).not.toContain("private");
+    expect(JSON.stringify(events)).not.toContain("secret-");
+  });
+  it("compares only arguments remaining after capture truncation", () => {
+    const events = [0, 1, 2].map((i) => makeEvent("TOOL_CALL", {
+      tool_name: "Bash",
+      args: redactAndTruncate({ command: "private-prefix".repeat(100) + `suffix-${i}` },
+        { redact: true, redact_keys: [], max_field_bytes: 100 }),
+    }));
+    const warning = detectLoop(events, 12, 3)!;
+    expect(warning.pattern).toBe(computeSignature(events[0]));
+    expect(JSON.stringify(warning)).not.toContain("private-prefix");
+    expect(JSON.stringify(events)).not.toContain("suffix-");
+  });
+  it.each([
+    ["Bash", "command", ["pytest", "git status", "cat pyproject.toml"]],
+    ["Read", "file_path", ["a.py", "b.py", "c.py"]],
+  ])("distinct %s calls do not warn", (tool, key, values) => {
+    const events = (values as string[]).map((value) =>
+      makeEvent("TOOL_CALL", { tool_name: tool, args: { [key as string]: value } }));
+    expect(detectLoop(events, 12, 3)).toBeNull();
+  });
+
+  it.each([
+    [["pytest", "pytest", "pytest"], 1],
+    [["pytest", "git status", "pytest", "git status", "pytest", "git status"], 2],
+  ])("same tool detects argument repetition and cycles", (commands, length) => {
+    const events = (commands as string[]).map((command, i) =>
+      makeEvent("TOOL_CALL", { tool_name: "Bash", args: { command } }, `e-${i}`));
+    const warning = detectLoop(events, 12, 3)!;
+    expect(warning.pattern_length).toBe(length);
+    expect(warning.pattern_type).toBe(length === 2 ? "cycle" : "repeated_call");
+    expect(warning.evidence_event_ids).toEqual(events.map((event) => event.event_id));
+    for (const command of commands as string[]) expect(JSON.stringify(warning)).not.toContain(command);
+    expect(new Set(warning.pattern.split(" -> ")).size).toBe(length);
+  });
+
+  it("canonicalizes object order while preserving array order, types and all items", () => {
+    const signature = (args: unknown) => computeSignature(makeEvent("TOOL_CALL", { tool_name: "inspect", args }));
+    expect(signature({ z: [true, null, 1, 1.5, "é😀"], a: { command: "private" } }))
+      .toBe(signature({ a: { command: "private" }, z: [true, null, 1, 1.5, "é😀"] }));
+    for (const [left, right] of [
+      [[1, 2, 3, 4], [1, 2, 3, 5]], [[1, 2], [2, 1]], [true, 1], ["1", 1], [{}, []],
+      [{ root: { branch: { leaf: { hidden: "a" } } } }, { root: { branch: { leaf: { hidden: "b" } } } }],
+    ]) expect(signature(left)).not.toBe(signature(right));
+  });
+
   it("returns null for empty events", () => {
     expect(detectLoop([], 12, 3)).toBeNull();
   });

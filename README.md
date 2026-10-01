@@ -129,9 +129,7 @@ It does not normalize or redact provider payloads. Callers must apply
 `redactAndTruncate()` while translating external data, then pass the resulting
 metadata and spans; existing run directories are never intentionally replaced.
 
-Loop detection also mirrors Python's shape-only tool argument signatures. Raw
-argument values are never included in a signature. `LoopWarningPayload`
-includes `pattern_type` (`repeated_call` or `cycle`) and `pattern_length`.
+Loop detection mirrors Python's argument identity: tool name plus a fixed-size SHA-256 fingerprint of canonicalized arguments. Apply `redactAndTruncate()` with your capture configuration before calling `computeSignature()` or `detectLoop()`. Object key order is ignored; scalar values, array order, and all available items determine equality. Identical calls repeat; different commands or file paths do not; alternating arguments can form a cycle. Raw argument values and keys never appear in signatures or warning patterns. Differences removed by redaction or truncation cannot distinguish actions; missing or null args retain name-only matching. `LoopWarningPayload` includes `pattern_type` (`repeated_call` or `cycle`) and `pattern_length`. Older stored warnings remain readable with their original patterns.
 
 The compatibility fixtures in `tests/fixtures/traces/` cover normal,
 tool-loop, running/missing-terminal-state, and malformed trace cases for other
