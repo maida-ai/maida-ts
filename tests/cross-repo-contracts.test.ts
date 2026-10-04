@@ -38,7 +38,10 @@ describe("Python-owned current-main contract", () => {
     expect(contract.engine_ref).toMatch(
       /^v\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+)?$/,
     );
-    expect(contract.action_ref).toBe(`maida-ai/maida-assert@${contract.engine_ref}`);
+    // Engine and Action patch releases are independent; Python owns the pairing.
+    expect(contract.action_ref).toMatch(
+      /^maida-ai\/maida-assert@v\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+)?$/,
+    );
     expect(schemas.trace).toBe(SPEC_VERSION);
     expect(cli.primary_gate).toBe("run");
     expect(cli.legacy_gate).toBe("assert");
