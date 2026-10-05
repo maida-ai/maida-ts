@@ -1,6 +1,6 @@
 # `@maida-ai/core`
 
-TypeScript mirror for Maida.
+**Maida checks agent changes before merge.** This supported extension writes compatible traces from TypeScript and JavaScript for the [Maida engine and CLI](https://github.com/maida-ai/maida) to read. Start with the engine, [canonical tutorials](https://github.com/maida-ai/maida-tutorials), and [GitHub Action](https://github.com/maida-ai/maida-assert); use this package when your integration needs a trace writer.
 
 **Versioning:** This package shares the Python engine's `MAJOR.MINOR` compatibility line and has its own patch releases. Compatibility is checked against the shared trace contract; matching numbers alone do not establish feature parity. See [contributing](https://github.com/maida-ai/maida-ts/blob/main/CONTRIBUTING.md#versioning).
 
